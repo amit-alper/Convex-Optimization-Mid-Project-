@@ -61,8 +61,8 @@ Expect 24 rows with status `ok` and finite objectives, one run per instance at e
 ## Create a task branch and solver file
 
 ```sh
-git switch main
-git pull --ff-only origin main
+git switch develop
+git pull --ff-only origin develop
 git switch -c feature/my-algorithm
 ```
 
@@ -98,9 +98,36 @@ Copy `solver.py` to `my_initializer.py` with `cp solver.py my_initializer.py` or
 
 In PowerShell, start the same command with `.\.venv\Scripts\python.exe`. The initializer's `objective` measures the quality of its starting positions, and `runtime_s` measures the time it spent computing them.
 
+## Visualize a public instance
+
+Install Matplotlib in the same virtual environment on Linux, macOS, or WSL.
+
+```sh
+.venv/bin/python -m pip install matplotlib==3.10.8
+```
+
+In Windows PowerShell, run the following.
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install matplotlib==3.10.8
+```
+
+Run the examples from the repository root and open the PNGs in `results/`.
+
+```sh
+.venv/bin/python -B visualize.py A_1.npz solver.py --run short --edges --output visualization-A_1.png
+.venv/bin/python -B visualize.py C_1.npz solver.py --run long --edges --output visualization-C_1.png
+```
+
+In PowerShell, start the same commands with `.\.venv\Scripts\python.exe`.
+
+Pass one public instance filename, followed by one or more solver `.py` files. For example, add `my_algorithm.py` after `solver.py` to see both results beside `x0`. Use `--run short` for 5 seconds (the default) or `--run long` for 20 seconds. Use `--edges` to add measured edges colored by absolute distance residual. All panels share axis limits, equal aspect ratios, and a single residual color scale when edges are shown.
+
+The circles are sensors and the diamonds are anchors. The tool scores and plots each solver's projected result, and a failed trial shows its status. The course runner times the solver call. Plotting and saving happen afterward. Use a fresh PNG filename with `--output` or omit it to use the default instance-and-budget name, with `-edges` appended when requested.
+
 ## Test and submit a pull request
 
-With the course files in place, run the automated checks on Linux, macOS, or WSL.
+With the course files, NumPy, and Matplotlib in place, run the automated checks on Linux, macOS, or WSL.
 
 ```sh
 .venv/bin/python -B -m unittest discover -s tests -v
@@ -120,4 +147,4 @@ git commit -m "Add my localization solver"
 git push -u origin feature/my-algorithm
 ```
 
-Open the pull request link printed by `git push`. If there is no link, open the repository on GitHub and choose **Pull requests** and then **New pull request**. Set the base branch to `main` and the compare branch to `feature/my-algorithm`. Include the exact benchmark command, the results you observed, and any failed trials, then choose **Create pull request**. Ask another teammate to reproduce the checks and review the change before merging. [Team workflow](AGENTS.md)
+Open the pull request link printed by `git push`. If there is no link, open the repository on GitHub and choose **Pull requests** and then **New pull request**. Set the base branch to `develop` and the compare branch to `feature/my-algorithm`. Include the exact benchmark command, the results you observed, and any failed trials, then choose **Create pull request**. Ask another teammate to reproduce the checks and review the change. Merging requires explicit approval. [Team workflow](AGENTS.md)
