@@ -86,6 +86,17 @@ class PGDTests(unittest.TestCase):
         self.assertEqual(evaluations, 4)
         np.testing.assert_array_equal(x, param.x0)
 
+    def test_alternative_start_is_projected_without_replacing_param_x0(self):
+        param = problem.load(COURSE / "public" / "A_1.npz")
+        original = param.x0.copy()
+        supplied = param.x0 + 0.5
+        before = supplied.copy()
+        x = pgd.run_pgd(param, 0, x0=supplied)
+        np.testing.assert_array_equal(x, problem.project(supplied, param))
+        np.testing.assert_array_equal(param.x0, original)
+        np.testing.assert_array_equal(supplied, before)
+        np.testing.assert_array_equal(pgd.solver(param, 0), original)
+
     def test_optional_trace_includes_start_and_final_accepted_positions(self):
         filename = "A_1.npz"
         param = problem.load(COURSE / "public" / filename)

@@ -52,11 +52,11 @@ def armijo_step(x, value, grad, param, step, deadline):
     return None
 
 
-def run_pgd(param, max_time, *, record=None):
-    """Run PGD, optionally recording selected accepted iterates for diagnostics."""
+def run_pgd(param, max_time, *, x0=None, record=None):
+    """Run PGD from the supplied array or the instance's default start."""
     started = perf_counter()
     deadline = started + TIME_FRACTION * max_time
-    x = project(param.x0, param)
+    x = project(param.x0 if x0 is None else x0, param)
     if record is not None:
         record(x, iteration=0, elapsed_s=0.0)
     if perf_counter() >= deadline:
@@ -90,3 +90,7 @@ def run_pgd(param, max_time, *, record=None):
 
 def solver(param, max_time):
     return run_pgd(param, max_time)
+
+
+# The shared trace command calls solve with an optional recording callback.
+solve = run_pgd
