@@ -11,14 +11,11 @@ cd Convex-Optimization-Mid-Project-
 
 ## Course materials
 
-Get your own copies from the course Moodle page. Place them in these directories at the repository root. Git ignores both directories.
-
-- `course_package/` contains the extracted contents of `localization_package.zip`. Extract the ZIP so that `course_package/test_solver.py`, `course_package/example_solver.py`, and `course_package/public/A_1.npz` exist directly at those paths.
-- `references/` holds `Project_handout.pdf`, `67731_Optimization_26_27.pdf`, and the original `localization_package.zip` for reference.
-
-Use the course files as supplied.
-
-## Set up and verify
+## Quick start
+```
+python test_solver.py example_solver.py
+python test_solver.py my_solver.py --only B_1.npz --run short
+```
 
 Use Python 3.12. Run the commands from the repository root. NumPy is the only dependency for the supplied example.
 
