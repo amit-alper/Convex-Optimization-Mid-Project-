@@ -11,6 +11,7 @@ from textwrap import fill
 import numpy as np
 
 from convergence_trace import Trace
+from trace_diagnostics import collapsed_positions, objective_ratio
 from visualize import COURSE, RESULTS
 
 
@@ -44,8 +45,9 @@ def render_trace(trace, problem, param, output):
         scores.append(problem.objective(projected, param))
         if i in frame_indices:
             positions.append(projected)
-    if not np.isfinite(scores).all():
-        raise ValueError("the trace has a nonfinite projected objective")
+    reference = problem.objective(collapsed_positions(problem, param), param)
+    if not np.isfinite(scores).all() or not np.isfinite(reference):
+        raise ValueError("the trace or collapsed reference has a nonfinite objective")
     objectives = [scores[i] for i in indices]
     elapsed = [trace.elapsed_s[i] for i in indices]
 
@@ -64,7 +66,7 @@ def render_trace(trace, problem, param, output):
                     edgecolors="white", linewidths=0.8, label="Anchors", zorder=3)
     spatial.legend(loc="upper center", bbox_to_anchor=(0.5, -0.16), ncols=2, frameon=False)
 
-    low, high = min(scores), max(scores)
+    low, high = min(min(scores), reference), max(max(scores), reference)
     if low > 0:
         history.set_yscale("log")
         limits = (low / 1.1, high * 1.1)
@@ -77,12 +79,17 @@ def render_trace(trace, problem, param, output):
     history.grid(alpha=0.25)
     line, = history.plot([], [], color="#284869", linewidth=1.6)
     current, = history.plot([], [], "o", color="#ca4636", markersize=5)
+    history.axhline(reference, color="#596d80", linestyle="--", linewidth=1.2,
+                    label=f"Collapsed reference {reference:.5g}")
+    history.legend(loc="upper right", fontsize="small", frameon=False)
 
     frames = []
     for frame, (index, x, time, objective) in enumerate(zip(indices, positions, elapsed, objectives)):
         sensors.set_offsets(x[param.free, :2])
         spatial.set_title(f"Iteration {trace.iterations[index]:,}  |  {time:.3f} s")
-        history.set_title(f"Objective {objective:.8g}")
+        ratio = objective_ratio(objective, reference)
+        ratio_label = f"{ratio:.4g}" if ratio is not None else "n/a"
+        history.set_title(f"Objective {objective:.8g}\nRatio to collapsed {ratio_label}")
         line.set_data(elapsed[:frame + 1], objectives[:frame + 1])
         current.set_data([time], [objective])
         canvas.draw()

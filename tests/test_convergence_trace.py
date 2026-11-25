@@ -57,22 +57,23 @@ class TraceTests(unittest.TestCase):
         self.assertEqual(len(trace.positions), 1)
 
     def test_objective_axis_preserves_values_and_uses_linear_scale_if_any_score_is_zero(self):
-        param = SimpleNamespace(n=2, free=[1], anchor=[0])
         problem = SimpleNamespace(
             project=lambda x, param: x,
-            objective=lambda x, param: x[1, 0],
+            objective=lambda x, param: param.reference if x[1, 1] == 0.5 else x[1, 0],
         )
         original_draw = FigureCanvasAgg.draw
         cases = (
-            ((0.8, 0.4, 0.2, 0.1, 0.05), "log"),
-            ((0.8, 0.4, 0.2, 0.1, 0.0), "linear"),
-            ((0.8, 0.0, 0.2, 0.1, 0.05), "linear"),
+            ((0.8, 0.4, 0.2, 0.1, 0.05), 1, "log"),
+            ((0.8, 0.4, 0.2, 0.1, 0.0), 1, "linear"),
+            ((0.8, 0.0, 0.2, 0.1, 0.05), 1, "linear"),
+            ((0.8, 0.4, 0.2, 0.1, 0.05), 0, "linear"),
         )
-        for scores, scale in cases:
-            with self.subTest(scores=scores):
+        for scores, reference, scale in cases:
+            with self.subTest(scores=scores, reference=reference):
+                param = SimpleNamespace(n=2, q=2, free=[1], anchor=[0], reference=reference)
                 trace = Trace("A_1.npz")
                 for i, score in enumerate(scores):
-                    trace.record([[0, 0], [score, 0.5]], iteration=i, elapsed_s=i)
+                    trace.record([[0, 0], [score, 0.25]], iteration=i, elapsed_s=i)
                 axes = []
 
                 def capture(canvas):
@@ -90,7 +91,12 @@ class TraceTests(unittest.TestCase):
                 history = axes[-1]
                 self.assertEqual(history.get_yscale(), scale)
                 np.testing.assert_array_equal(history.lines[0].get_ydata(), scores[::2])
-                self.assertEqual(history.get_title(), f"Objective {scores[-1]:.8g}")
+                np.testing.assert_array_equal(history.lines[-1].get_ydata(), [reference, reference])
+                self.assertEqual(history.lines[-1].get_label(), f"Collapsed reference {reference:g}")
+                self.assertLess(history.get_ylim()[0], reference)
+                self.assertGreater(history.get_ylim()[1], reference)
+                ratio = f"{scores[-1] / reference:.4g}" if reference else "n/a"
+                self.assertEqual(history.get_title(), f"Objective {scores[-1]:.8g}\nRatio to collapsed {ratio}")
 
     def test_default_html_viewer_embeds_sparse_frames_and_controls(self):
         sys.path.insert(0, str(COURSE))
