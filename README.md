@@ -141,7 +141,7 @@ trace.save("results/my-trace.npz")
 
 Inside the algorithm, start a `time.perf_counter()` timer. At a selected iteration, call `record(x, iteration=k, elapsed_s=time.perf_counter() - started)` if `record` is present. Pass the full `(param.n, param.q)` position array. Aim for roughly 30 snapshots, including the initial and final positions once each. The recorder copies each selected array, so the algorithm can continue updating it in place. `Trace.load("results/my-trace.npz")` reads the arrays, iterations, time stamps, and label independently of the solver.
 
-The artificial example below uses prescribed positions and synthetic timing. The second command reads the saved NPZ, projects and scores the snapshots with the course package, and writes a self-contained HTML viewer. It keeps the first and final snapshots and uses at most 32 frames. The right panel plots the original projected objective values against elapsed time on a logarithmic Y-axis. It uses a linear scale if any saved snapshot scores zero.
+The artificial example below uses prescribed positions and synthetic timing. The second command reads the saved NPZ, projects and scores the snapshots with the course package, and writes a self-contained HTML viewer. It keeps the first and final snapshots and uses at most 32 frames. The right panel plots the original projected objective values against elapsed time on a logarithmic Y-axis. A dashed line marks the collapsed reference, and each frame shows its objective divided by that reference. The viewer uses a linear scale if any saved snapshot or the reference scores zero.
 
 ```sh
 .venv/bin/python -B -m examples.artificial_trace
@@ -191,6 +191,32 @@ foreach ($instance in 'A_1', 'B_1', 'C_1', 'D_1') {
 ```
 
 Open the PNGs and HTML viewers in `results/`. Use `--output` with fresh filenames for repeat runs.
+
+## Compare saved traces with a collapsed reference
+
+The collapsed reference places every free sensor at `(0.5, 0.5)` and preserves the supplied anchor positions. The diagnostic ratio is the current projected objective divided by the official objective of that reference. A ratio below 1 means the current objective is lower than the reference. A zero reference gives `n/a`.
+
+Run the report below against the saved PGD traces. It compares the first and last snapshots with the collapsed reference and reports counts and mean official losses for free-to-free, free-to-anchor, and anchor-to-anchor edges at all three configurations. An empty group has a count of zero and a mean of `n/a`. These calculations run offline on saved traces.
+
+```sh
+.venv/bin/python -B trace_diagnostics.py results/pgd-A_1-short.npz results/pgd-B_1-short.npz results/pgd-C_1-short.npz results/pgd-D_1-short.npz > results/pgd-short-diagnostics.md
+```
+
+Render viewers with the reference line from those same traces.
+
+```sh
+for instance in A_1 B_1 C_1 D_1; do
+  .venv/bin/python -B render_trace.py "results/pgd-${instance}-short.npz" --output "results/pgd-${instance}-short-diagnostics.html"
+done
+```
+
+In PowerShell, start the report command with `.\.venv\Scripts\python.exe` and use this loop for the viewers.
+
+```powershell
+foreach ($instance in 'A_1', 'B_1', 'C_1', 'D_1') {
+    .\.venv\Scripts\python.exe -B render_trace.py "results/pgd-${instance}-short.npz" --output "results/pgd-${instance}-short-diagnostics.html"
+}
+```
 
 ## Test and submit a pull request
 
