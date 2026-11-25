@@ -31,9 +31,10 @@ def write_viewer(frames, destination):
     destination.write(template.replace("__VIEWER_DATA__", data).encode("utf-8"))
 
 
-def render_trace(trace, problem, param, output):
+def render_trace(trace, problem, param, output, *, baselines=()):
     from matplotlib.backends.backend_agg import FigureCanvasAgg
     from matplotlib.figure import Figure
+    from matplotlib.ticker import FuncFormatter, NullFormatter
     from PIL import Image
 
     count = len(trace.positions)
@@ -48,8 +49,17 @@ def render_trace(trace, problem, param, output):
     reference = problem.objective(collapsed_positions(problem, param), param)
     if not np.isfinite(scores).all() or not np.isfinite(reference):
         raise ValueError("the trace or collapsed reference has a nonfinite objective")
+    references = [("Collapsed reference", reference), *baselines]
+    if any(not np.isfinite(value) or value < 0 for _, value in references):
+        raise ValueError("reference objectives must be finite and nonnegative")
     objectives = [scores[i] for i in indices]
     elapsed = [trace.elapsed_s[i] for i in indices]
+    if reference > 0:
+        plotted_scores = [100 * (score / reference) for score in scores]
+        references = [(label, 100 * (value / reference)) for label, value in references]
+    else:
+        plotted_scores = scores
+    plotted_objectives = [plotted_scores[i] for i in indices]
 
     figure = Figure(figsize=(9.2, 4.2), dpi=105)
     canvas = FigureCanvasAgg(figure)
@@ -66,7 +76,8 @@ def render_trace(trace, problem, param, output):
                     edgecolors="white", linewidths=0.8, label="Anchors", zorder=3)
     spatial.legend(loc="upper center", bbox_to_anchor=(0.5, -0.16), ncols=2, frameon=False)
 
-    low, high = min(min(scores), reference), max(max(scores), reference)
+    visible_values = plotted_scores + [value for _, value in references]
+    low, high = min(visible_values), max(visible_values)
     if low > 0:
         history.set_yscale("log")
         limits = (low / 1.1, high * 1.1)
@@ -75,12 +86,20 @@ def render_trace(trace, problem, param, output):
         limits = (low - padding, high + padding)
     duration = elapsed[-1] or 1
     history.set(xlim=(-0.02 * duration, 1.02 * duration), ylim=limits,
-                xlabel="Elapsed time (s)", ylabel="Official objective")
+                xlabel="Elapsed time (s)",
+                ylabel="Objective (% of collapsed reference)" if reference > 0 else "Official objective")
+    if reference > 0:
+        history.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}%"))
+        history.yaxis.set_minor_formatter(NullFormatter())
     history.grid(alpha=0.25)
     line, = history.plot([], [], color="#284869", linewidth=1.6)
     current, = history.plot([], [], "o", color="#ca4636", markersize=5)
-    history.axhline(reference, color="#596d80", linestyle="--", linewidth=1.2,
-                    label=f"Collapsed reference {reference:.5g}")
+    colors = ("#596d80", "#776126", "#347762")
+    styles = ("--", "-.", ":")
+    unit = "%" if reference > 0 else ""
+    for i, (label, value) in enumerate(references):
+        history.axhline(value, color=colors[i % len(colors)], linestyle=styles[i % len(styles)],
+                        linewidth=1.2, label=f"{label} {value:.5g}{unit}")
     history.legend(loc="upper right", fontsize="small", frameon=False)
 
     frames = []
@@ -88,10 +107,10 @@ def render_trace(trace, problem, param, output):
         sensors.set_offsets(x[param.free, :2])
         spatial.set_title(f"Iteration {trace.iterations[index]:,}  |  {time:.3f} s")
         ratio = objective_ratio(objective, reference)
-        ratio_label = f"{ratio:.4g}" if ratio is not None else "n/a"
-        history.set_title(f"Objective {objective:.8g}\nRatio to collapsed {ratio_label}")
-        line.set_data(elapsed[:frame + 1], objectives[:frame + 1])
-        current.set_data([time], [objective])
+        percent = f"{100 * ratio:.4g}%" if ratio is not None else "n/a"
+        history.set_title(f"Objective {objective:.8g}\nOf collapsed reference {percent}")
+        line.set_data(elapsed[:frame + 1], plotted_objectives[:frame + 1])
+        current.set_data([time], [plotted_objectives[frame]])
         canvas.draw()
         image = Image.fromarray(np.asarray(canvas.buffer_rgba()))
         frames.append(image.convert("P", palette=Image.Palette.ADAPTIVE))
@@ -113,6 +132,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("trace", type=Path, help="saved NPZ trace")
     parser.add_argument("--output", type=Path, help="new HTML or GIF path (defaults to HTML in results/)")
+    parser.add_argument("--baseline", nargs=2, metavar=("LABEL", "OBJECTIVE"), action="append",
+                        default=[], help="add a measured benchmark objective to the plot")
     args = parser.parse_args()
     output = args.output or RESULTS / f"{args.trace.stem}.html"
     if output.suffix.lower() not in (".html", ".gif") or output.exists():
@@ -130,7 +151,8 @@ def main():
     import problem
 
     try:
-        render_trace(trace, problem, problem.load(public[trace.instance]), output)
+        baselines = [(label, float(value)) for label, value in args.baseline]
+        render_trace(trace, problem, problem.load(public[trace.instance]), output, baselines=baselines)
     except (OSError, ValueError) as error:
         parser.error(str(error))
 
