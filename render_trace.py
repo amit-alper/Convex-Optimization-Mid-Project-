@@ -1,7 +1,10 @@
-"""Render a saved localization trace as a GIF with official projected scores."""
+"""Render a saved localization trace with official projected scores."""
 
 import argparse
+import json
 import sys
+from base64 import b64encode
+from io import BytesIO
 from pathlib import Path
 from textwrap import fill
 
@@ -16,7 +19,18 @@ FRAME_MS = 120
 FINAL_FRAME_MS = 1500
 
 
-def render_gif(trace, problem, param, output):
+def write_viewer(frames, destination):
+    images = []
+    for frame in frames:
+        with BytesIO() as buffer:
+            frame.save(buffer, format="PNG", optimize=True)
+            images.append(b64encode(buffer.getvalue()).decode("ascii"))
+    data = json.dumps({"frames": images, "frameMs": FRAME_MS, "finalFrameMs": FINAL_FRAME_MS})
+    template = Path(__file__).with_name("trace_viewer.html").read_text(encoding="utf-8")
+    destination.write(template.replace("__VIEWER_DATA__", data).encode("utf-8"))
+
+
+def render_trace(trace, problem, param, output):
     from matplotlib.backends.backend_agg import FigureCanvasAgg
     from matplotlib.figure import Figure
     from PIL import Image
@@ -64,12 +78,15 @@ def render_gif(trace, problem, param, output):
         image = Image.fromarray(np.asarray(canvas.buffer_rgba()))
         frames.append(image.convert("P", palette=Image.Palette.ADAPTIVE))
 
-    frame_durations = [FRAME_MS] * (len(frames) - 1) + [FINAL_FRAME_MS]
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("xb") as destination:
-        frames[0].save(destination, format="GIF", save_all=True, append_images=frames[1:],
-                       duration=frame_durations, loop=0)
+        if output.suffix.lower() == ".gif":
+            durations = [FRAME_MS] * (len(frames) - 1) + [FINAL_FRAME_MS]
+            frames[0].save(destination, format="GIF", save_all=True, append_images=frames[1:],
+                           duration=durations, loop=0)
+        else:
+            write_viewer(frames, destination)
     print(f"Saved {len(frames)} frames to {output}")
     print(f"Projected objective from {objectives[0]:.10g} to {objectives[-1]:.10g}")
 
@@ -77,11 +94,11 @@ def render_gif(trace, problem, param, output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("trace", type=Path, help="saved NPZ trace")
-    parser.add_argument("--output", type=Path, help="new GIF path (defaults to results/)")
+    parser.add_argument("--output", type=Path, help="new HTML or GIF path (defaults to HTML in results/)")
     args = parser.parse_args()
-    output = args.output or RESULTS / f"{args.trace.stem}.gif"
-    if output.suffix.lower() != ".gif" or output.exists():
-        parser.error("choose a new .gif output path")
+    output = args.output or RESULTS / f"{args.trace.stem}.html"
+    if output.suffix.lower() not in (".html", ".gif") or output.exists():
+        parser.error("choose a new .html or .gif output path")
 
     try:
         trace = Trace.load(args.trace)
@@ -95,7 +112,7 @@ def main():
     import problem
 
     try:
-        render_gif(trace, problem, problem.load(public[trace.instance]), output)
+        render_trace(trace, problem, problem.load(public[trace.instance]), output)
     except (OSError, ValueError) as error:
         parser.error(str(error))
 

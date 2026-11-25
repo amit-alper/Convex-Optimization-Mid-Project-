@@ -141,14 +141,16 @@ trace.save("results/my-trace.npz")
 
 Inside the algorithm, start a `time.perf_counter()` timer. At a selected iteration, call `record(x, iteration=k, elapsed_s=time.perf_counter() - started)` if `record` is present. Pass the full `(param.n, param.q)` position array. Aim for roughly 30 snapshots, including the initial and final positions once each. The recorder copies each selected array, so the algorithm can continue updating it in place. `Trace.load("results/my-trace.npz")` reads the arrays, iterations, time stamps, and label independently of the solver.
 
-The artificial example below uses prescribed positions and synthetic timing. The second command reads the saved NPZ, projects and scores the selected snapshots with the course package, and writes the GIF. It keeps the first and final snapshots, uses at most 32 frames, and holds the final frame for 1.5 seconds. The right panel plots projected objective against elapsed time.
+The artificial example below uses prescribed positions and synthetic timing. The second command reads the saved NPZ, projects and scores the selected snapshots with the course package, and writes a self-contained HTML viewer. It keeps the first and final snapshots and uses at most 32 frames. The right panel plots projected objective against elapsed time.
 
 ```sh
 .venv/bin/python -B -m examples.artificial_trace
-.venv/bin/python -B render_trace.py results/artificial-trace.npz --output results/artificial-convergence.gif
+.venv/bin/python -B render_trace.py results/artificial-trace.npz
 ```
 
-In PowerShell, start the same commands with `.\.venv\Scripts\python.exe`. Use the Matplotlib environment above. For repeat runs, choose fresh output paths with `--output` on both commands.
+Open `results/artificial-trace.html` directly in a modern browser. The file embeds the frames and controls and works offline. Use **Play/Pause**, **Previous/Next**, the left and right arrow keys, or the **Frame** slider. The **Speed** menu ranges from 0.25× to 4×. Playback holds the final frame for 1.5 seconds at normal speed before looping.
+
+In PowerShell, start the same commands with `.\.venv\Scripts\python.exe`. Use the Matplotlib environment above. For repeat runs, choose a fresh trace or viewer path with `--output`. An explicit `.gif` output path still exports a GIF.
 
 ## Test and submit a pull request
 

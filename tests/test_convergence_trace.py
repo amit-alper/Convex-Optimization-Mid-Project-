@@ -1,16 +1,21 @@
 """Exercise trace storage and offline rendering without an optimization solver."""
 
+import json
+import re
 import subprocess
 import sys
 import tempfile
 import unittest
+from base64 import b64decode
+from io import BytesIO
 from pathlib import Path
+from uuid import uuid4
 
 import numpy as np
 from PIL import Image
 
 from convergence_trace import Trace
-from visualize import COURSE, ROOT
+from visualize import COURSE, RESULTS, ROOT
 
 
 class TraceTests(unittest.TestCase):
@@ -47,7 +52,7 @@ class TraceTests(unittest.TestCase):
             trace.record(x[:2], iteration=2, elapsed_s=0.2)
         self.assertEqual(len(trace.positions), 1)
 
-    def test_renderer_preserves_endpoints_and_holds_the_final_frame(self):
+    def test_default_html_viewer_embeds_sparse_frames_and_controls(self):
         sys.path.insert(0, str(COURSE))
         try:
             import problem
@@ -60,24 +65,33 @@ class TraceTests(unittest.TestCase):
             trace.record(param.x0 + step / 44, iteration=step * 2, elapsed_s=step / 20)
 
         with tempfile.TemporaryDirectory() as directory:
-            source = Path(directory) / "trace.npz"
-            output = Path(directory) / "trace.gif"
+            source = Path(directory) / f"test-trace-{uuid4().hex}.npz"
+            output = RESULTS / f"{source.stem}.html"
+            self.addCleanup(output.unlink, missing_ok=True)
             trace.save(source)
             completed = subprocess.run(
-                [sys.executable, "-B", "render_trace.py", source, "--output", output],
+                [sys.executable, "-B", "render_trace.py", source],
                 cwd=ROOT, capture_output=True, text=True, timeout=120,
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
             first, last = (problem.objective(problem.project(x, param), param)
                            for x in (trace.positions[0], trace.positions[-1]))
             self.assertIn(f"Projected objective from {first:.10g} to {last:.10g}", completed.stdout)
-            with Image.open(output) as animation:
-                self.assertEqual(animation.format, "GIF")
-                self.assertEqual(animation.n_frames, 32)
-                self.assertGreater(animation.width, animation.height)
-                self.assertEqual(animation.info["duration"], 120)
-                animation.seek(animation.n_frames - 1)
-                self.assertEqual(animation.info["duration"], 1500)
+            html = output.read_text(encoding="utf-8")
+            embedded = re.search(r'<script id="viewer-data" type="application/json">(.*?)</script>', html)
+            self.assertIsNotNone(embedded)
+            data = json.loads(embedded.group(1))
+            self.assertEqual(len(data["frames"]), 32)
+            self.assertEqual((data["frameMs"], data["finalFrameMs"]), (120, 1500))
+            self.assertNotEqual(data["frames"][0], data["frames"][-1])
+            for frame in data["frames"]:
+                with Image.open(BytesIO(b64decode(frame, validate=True))) as plot:
+                    self.assertEqual(plot.format, "PNG")
+                    self.assertGreater(plot.width, plot.height)
+                    plot.verify()
+            for control in ("play", "previous", "next", "frame", "speed"):
+                self.assertIn(f'id="{control}"', html)
+            self.assertNotRegex(html, r'<(?:script|link|img)\b[^>]*\b(?:src|href)=')
 
 
 if __name__ == "__main__":
