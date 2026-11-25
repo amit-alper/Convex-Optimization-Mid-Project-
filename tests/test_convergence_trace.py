@@ -56,20 +56,21 @@ class TraceTests(unittest.TestCase):
             trace.record(x[:2], iteration=2, elapsed_s=0.2)
         self.assertEqual(len(trace.positions), 1)
 
-    def test_objective_axis_preserves_values_and_uses_linear_scale_if_any_score_is_zero(self):
+    def test_objective_axis_normalizes_scores_and_uses_linear_scale_for_zeros(self):
         problem = SimpleNamespace(
             project=lambda x, param: x,
             objective=lambda x, param: param.reference if x[1, 1] == 0.5 else x[1, 0],
         )
         original_draw = FigureCanvasAgg.draw
         cases = (
-            ((0.8, 0.4, 0.2, 0.1, 0.05), 1, "log"),
-            ((0.8, 0.4, 0.2, 0.1, 0.0), 1, "linear"),
-            ((0.8, 0.0, 0.2, 0.1, 0.05), 1, "linear"),
-            ((0.8, 0.4, 0.2, 0.1, 0.05), 0, "linear"),
+            ((0.8, 0.4, 0.2, 0.1, 0.05), 2, 1, "log"),
+            ((0.8, 0.4, 0.2, 0.1, 0.0), 2, 1, "linear"),
+            ((0.8, 0.0, 0.2, 0.1, 0.05), 2, 1, "linear"),
+            ((0.8, 0.4, 0.2, 0.1, 0.05), 2, 0, "linear"),
+            ((0.8, 0.4, 0.2, 0.1, 0.05), 0, 1, "linear"),
         )
-        for scores, reference, scale in cases:
-            with self.subTest(scores=scores, reference=reference):
+        for scores, reference, baseline, scale in cases:
+            with self.subTest(scores=scores, reference=reference, baseline=baseline):
                 param = SimpleNamespace(n=2, q=2, free=[1], anchor=[0], reference=reference)
                 trace = Trace("A_1.npz")
                 for i, score in enumerate(scores):
@@ -86,17 +87,25 @@ class TraceTests(unittest.TestCase):
                     patch.object(FigureCanvasAgg, "draw", capture),
                     patch("builtins.print"),
                 ):
-                    render_trace(trace, problem, param, Path(directory) / "trace.html")
+                    render_trace(trace, problem, param, Path(directory) / "trace.html",
+                                 baselines=[("MDS + PGD", baseline), ("Levenberg–Marquardt", 0.5)])
 
                 history = axes[-1]
                 self.assertEqual(history.get_yscale(), scale)
-                np.testing.assert_array_equal(history.lines[0].get_ydata(), scores[::2])
-                np.testing.assert_array_equal(history.lines[-1].get_ydata(), [reference, reference])
-                self.assertEqual(history.lines[-1].get_label(), f"Collapsed reference {reference:g}")
-                self.assertLess(history.get_ylim()[0], reference)
-                self.assertGreater(history.get_ylim()[1], reference)
-                ratio = f"{scores[-1] / reference:.4g}" if reference else "n/a"
-                self.assertEqual(history.get_title(), f"Objective {scores[-1]:.8g}\nRatio to collapsed {ratio}")
+                factor, unit = (100 / reference, "%") if reference else (1, "")
+                np.testing.assert_allclose(history.lines[0].get_ydata(), np.array(scores[::2]) * factor)
+                for line, (label, value) in zip(history.lines[2:], (
+                    ("Collapsed reference", reference), ("MDS + PGD", baseline),
+                    ("Levenberg–Marquardt", 0.5),
+                ), strict=True):
+                    level = value * factor
+                    np.testing.assert_array_equal(line.get_ydata(), [level, level])
+                    self.assertEqual(line.get_label(), f"{label} {level:g}{unit}")
+                    self.assertLess(history.get_ylim()[0], level)
+                    self.assertGreater(history.get_ylim()[1], level)
+                percent = f"{scores[-1] * factor:.4g}%" if reference else "n/a"
+                self.assertEqual(history.get_title(),
+                                 f"Objective {scores[-1]:.8g}\nOf collapsed reference {percent}")
 
     def test_default_html_viewer_embeds_sparse_frames_and_controls(self):
         sys.path.insert(0, str(COURSE))
