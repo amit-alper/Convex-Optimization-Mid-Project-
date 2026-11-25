@@ -141,7 +141,7 @@ trace.save("results/my-trace.npz")
 
 Inside the algorithm, start a `time.perf_counter()` timer. At a selected iteration, call `record(x, iteration=k, elapsed_s=time.perf_counter() - started)` if `record` is present. Pass the full `(param.n, param.q)` position array. Aim for roughly 30 snapshots, including the initial and final positions once each. The recorder copies each selected array, so the algorithm can continue updating it in place. `Trace.load("results/my-trace.npz")` reads the arrays, iterations, time stamps, and label independently of the solver.
 
-The artificial example below uses prescribed positions and synthetic timing. The second command reads the saved NPZ, projects and scores the selected snapshots with the course package, and writes a self-contained HTML viewer. It keeps the first and final snapshots and uses at most 32 frames. The right panel plots projected objective against elapsed time.
+The artificial example below uses prescribed positions and synthetic timing. The second command reads the saved NPZ, projects and scores the snapshots with the course package, and writes a self-contained HTML viewer. It keeps the first and final snapshots and uses at most 32 frames. The right panel plots the original projected objective values against elapsed time on a logarithmic Y-axis. It uses a linear scale if any saved snapshot scores zero.
 
 ```sh
 .venv/bin/python -B -m examples.artificial_trace
