@@ -125,6 +125,31 @@ Pass one public instance filename, followed by one or more solver `.py` files. F
 
 The circles are sensors and the diamonds are anchors. The tool scores and plots each solver's projected result, and a failed trial shows its status. The course runner times the solver call. Plotting and saving happen afterward. Use a fresh PNG filename with `--output` or omit it to use the default instance-and-budget name, with `-edges` appended when requested.
 
+## Record and animate an optimization trace
+
+Keep the official `solver(param, max_time)` entry point. Give your internal algorithm function an optional recording callback, for example `run_algorithm(param, max_time, *, record=None)`. Have `solver` call it with the default so grading and benchmarks run with recording disabled.
+
+In a separate diagnostic run, pass a recorder and save the trace after the algorithm returns. Here `param` is the course instance you loaded and `run_algorithm` is your own function.
+
+```python
+from convergence_trace import Trace
+
+trace = Trace("A_1.npz", "My diagnostic run")
+run_algorithm(param, 20, record=trace.record)
+trace.save("results/my-trace.npz")
+```
+
+Inside the algorithm, start a `time.perf_counter()` timer. At a selected iteration, call `record(x, iteration=k, elapsed_s=time.perf_counter() - started)` if `record` is present. Pass the full `(param.n, param.q)` position array. Aim for roughly 30 snapshots, including the initial and final positions once each. The recorder copies each selected array, so the algorithm can continue updating it in place. `Trace.load("results/my-trace.npz")` reads the arrays, iterations, time stamps, and label independently of the solver.
+
+The artificial example below uses prescribed positions and synthetic timing. The second command reads the saved NPZ, projects and scores the selected snapshots with the course package, and writes the GIF. It keeps the first and final snapshots, uses at most 32 frames, and holds the final frame for 1.5 seconds. The right panel plots projected objective against elapsed time.
+
+```sh
+.venv/bin/python -B -m examples.artificial_trace
+.venv/bin/python -B render_trace.py results/artificial-trace.npz --output results/artificial-convergence.gif
+```
+
+In PowerShell, start the same commands with `.\.venv\Scripts\python.exe`. Use the Matplotlib environment above. For repeat runs, choose fresh output paths with `--output` on both commands.
+
 ## Test and submit a pull request
 
 With the course files, NumPy, and Matplotlib in place, run the automated checks on Linux, macOS, or WSL.

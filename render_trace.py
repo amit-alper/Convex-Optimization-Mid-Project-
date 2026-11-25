@@ -1,0 +1,104 @@
+"""Render a saved localization trace as a GIF with official projected scores."""
+
+import argparse
+import sys
+from pathlib import Path
+from textwrap import fill
+
+import numpy as np
+
+from convergence_trace import Trace
+from visualize import COURSE, RESULTS
+
+
+MAX_FRAMES = 32
+FRAME_MS = 120
+FINAL_FRAME_MS = 1500
+
+
+def render_gif(trace, problem, param, output):
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+    from PIL import Image
+
+    count = len(trace.positions)
+    indices = np.linspace(0, count - 1, min(count, MAX_FRAMES), dtype=int)
+    positions = [problem.project(trace.positions[i], param) for i in indices]
+    objectives = [problem.objective(x, param) for x in positions]
+    if not np.isfinite(objectives).all():
+        raise ValueError("the trace has a nonfinite projected objective")
+    elapsed = [trace.elapsed_s[i] for i in indices]
+
+    figure = Figure(figsize=(9.2, 4.2), dpi=105)
+    canvas = FigureCanvasAgg(figure)
+    spatial, history = figure.subplots(1, 2)
+    figure.subplots_adjust(left=0.07, right=0.97, bottom=0.19, top=0.78, wspace=0.32)
+    figure.suptitle(fill(f"{trace.label} | {trace.instance}", width=80), y=0.96, weight="semibold")
+
+    spatial.set(xlim=(-0.03, 1.03), ylim=(-0.03, 1.03), xlabel="x", ylabel="y",
+                xticks=(0, 0.25, 0.5, 0.75, 1), yticks=(0, 0.25, 0.5, 0.75, 1))
+    spatial.set_aspect("equal", adjustable="box")
+    sensors = spatial.scatter(*positions[0][param.free, :2].T, s=9 if param.n > 200 else 24,
+                              c="#284869", linewidths=0, label="Sensors")
+    spatial.scatter(*positions[0][param.anchor, :2].T, s=60, marker="D", c="#ca4636",
+                    edgecolors="white", linewidths=0.8, label="Anchors", zorder=3)
+    spatial.legend(loc="upper center", bbox_to_anchor=(0.5, -0.16), ncols=2, frameon=False)
+
+    low, high = min(objectives), max(objectives)
+    padding = (high - low) * 0.08 or max(abs(high) * 0.03, 1e-12)
+    duration = elapsed[-1] or 1
+    history.set(xlim=(-0.02 * duration, 1.02 * duration), ylim=(low - padding, high + padding),
+                xlabel="Elapsed time (s)", ylabel="Official objective")
+    history.grid(alpha=0.25)
+    line, = history.plot([], [], color="#284869", linewidth=1.6)
+    current, = history.plot([], [], "o", color="#ca4636", markersize=5)
+
+    frames = []
+    for frame, (index, x, time, objective) in enumerate(zip(indices, positions, elapsed, objectives)):
+        sensors.set_offsets(x[param.free, :2])
+        spatial.set_title(f"Iteration {trace.iterations[index]:,}  |  {time:.3f} s")
+        history.set_title(f"Objective {objective:.8g}")
+        line.set_data(elapsed[:frame + 1], objectives[:frame + 1])
+        current.set_data([time], [objective])
+        canvas.draw()
+        image = Image.fromarray(np.asarray(canvas.buffer_rgba()))
+        frames.append(image.convert("P", palette=Image.Palette.ADAPTIVE))
+
+    frame_durations = [FRAME_MS] * (len(frames) - 1) + [FINAL_FRAME_MS]
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("xb") as destination:
+        frames[0].save(destination, format="GIF", save_all=True, append_images=frames[1:],
+                       duration=frame_durations, loop=0)
+    print(f"Saved {len(frames)} frames to {output}")
+    print(f"Projected objective from {objectives[0]:.10g} to {objectives[-1]:.10g}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("trace", type=Path, help="saved NPZ trace")
+    parser.add_argument("--output", type=Path, help="new GIF path (defaults to results/)")
+    args = parser.parse_args()
+    output = args.output or RESULTS / f"{args.trace.stem}.gif"
+    if output.suffix.lower() != ".gif" or output.exists():
+        parser.error("choose a new .gif output path")
+
+    try:
+        trace = Trace.load(args.trace)
+    except (OSError, ValueError, KeyError) as error:
+        parser.error(f"cannot load the trace ({error})")
+    public = {path.name: path for path in (COURSE / "public").glob("*.npz")}
+    if trace.instance not in public or not (COURSE / "problem.py").is_file():
+        parser.error(f"cannot find public instance {trace.instance} in course_package/ (see README.md)")
+
+    sys.path.insert(0, str(COURSE))
+    import problem
+
+    try:
+        render_gif(trace, problem, problem.load(public[trace.instance]), output)
+    except (OSError, ValueError) as error:
+        parser.error(str(error))
+
+
+if __name__ == "__main__":
+    main()
