@@ -1,0 +1,3 @@
+# Extra libraries for the experiment and plotting scripts (not needed by solver.py).
+-r requirements.txt
+matplotlib==3.10.8

@@ -1,4 +1,4 @@
 /.venv/
-/course_package/
 /references/
 /results/
+__pycache__/
