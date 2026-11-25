@@ -2,43 +2,75 @@
 
 Mid-semester project for Optimization 67731, Topic 4.
 
-## Clone the repository
+## Quick Start
+
+Use Git and Python 3.12. In PowerShell, `python --version` should show Python 3.12. Run the clone block for your shell, then save the original Moodle download as `references/localization_package.zip`. Keep the handout and course notes in `references/` if you download them. Git ignores those materials and the extracted package.
+
+### WSL or Linux
 
 ```sh
-git clone https://github.com/amit-alper/Convex-Optimization-Mid-Project-.git
+git clone --branch develop https://github.com/amit-alper/Convex-Optimization-Mid-Project-.git
 cd Convex-Optimization-Mid-Project-
+mkdir -p references
 ```
 
-## Course materials
-
-Get your own copies from the course Moodle page. Place them in these directories at the repository root. Git ignores both directories.
-
-- `course_package/` contains the extracted contents of `localization_package.zip`. Extract the ZIP so that `course_package/test_solver.py`, `course_package/example_solver.py`, and `course_package/public/A_1.npz` exist directly at those paths.
-- `references/` holds `Project_handout.pdf`, `67731_Optimization_26_27.pdf`, and the original `localization_package.zip` for reference.
-
-Use the course files as supplied.
-
-## Set up and verify
-
-Use Python 3.12. Run the commands from the repository root. NumPy is the only dependency for the supplied example.
-
-On Linux, macOS, or WSL:
+After placing the ZIP in `references/`, run the following from the repository root.
 
 ```sh
 python3.12 -m venv .venv
-.venv/bin/python -m pip install numpy==2.5.5
+.venv/bin/python -m pip install numpy==2.5.5 matplotlib==3.10.8
+.venv/bin/python -m zipfile -e references/localization_package.zip course_package
+git switch -c feature/my-algorithm
+cp example_initialized_pgd.py my_algorithm.py
 .venv/bin/python -B course_package/test_solver.py course_package/example_solver.py --only A_1.npz B_1.npz --run short
+.venv/bin/python -B benchmark.py solver.py my_algorithm.py --only A_1.npz --run short --output results/my-algorithm.csv
+.venv/bin/python -B visualize.py A_1.npz my_algorithm.py --run short --output my-algorithm.png
+.venv/bin/python -B record_trace.py A_1.npz my_algorithm.py --run short --output results/my-algorithm.npz
+.venv/bin/python -B trace_diagnostics.py results/my-algorithm.npz > results/my-algorithm-diagnostics.md
+.venv/bin/python -B -m unittest discover -s tests -v
 ```
 
-On Windows PowerShell:
+### Windows PowerShell
 
 ```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install numpy==2.5.5
-.\.venv\Scripts\python.exe -B course_package/test_solver.py course_package/example_solver.py --only A_1.npz B_1.npz --run short
+git clone --branch develop https://github.com/amit-alper/Convex-Optimization-Mid-Project-.git
+cd Convex-Optimization-Mid-Project-
+New-Item -ItemType Directory -Force references | Out-Null
 ```
 
-Expect two rows with status `ok` and a finite objective. `A_1.npz` uses squared loss, and `B_1.npz` uses Huber loss. The `-B` flag keeps Python bytecode caches out of the course package.
+After placing the ZIP in `references/`, run the following from the repository root.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install numpy==2.5.5 matplotlib==3.10.8
+.\.venv\Scripts\python.exe -m zipfile -e references/localization_package.zip course_package
+git switch -c feature/my-algorithm
+Copy-Item example_initialized_pgd.py my_algorithm.py
+.\.venv\Scripts\python.exe -B course_package/test_solver.py course_package/example_solver.py --only A_1.npz B_1.npz --run short
+.\.venv\Scripts\python.exe -B benchmark.py solver.py my_algorithm.py --only A_1.npz --run short --output results/my-algorithm.csv
+.\.venv\Scripts\python.exe -B visualize.py A_1.npz my_algorithm.py --run short --output my-algorithm.png
+.\.venv\Scripts\python.exe -B record_trace.py A_1.npz my_algorithm.py --run short --output results/my-algorithm.npz
+.\.venv\Scripts\python.exe -B trace_diagnostics.py results/my-algorithm.npz | Set-Content -Encoding UTF8 results/my-algorithm-diagnostics.md
+.\.venv\Scripts\python.exe -B -m unittest discover -s tests -v
+```
+
+The course smoke test should show `ok` for `A_1.npz` and `B_1.npz`. Open `results/my-algorithm.html` in a browser, and look in `results/` for the CSV, PNG, NPZ, and diagnostic report. Edit `my_algorithm.py` on your task branch to develop your solver. Use fresh output names on repeat runs. The `-B` flag keeps Python bytecode caches out of the course package.
+
+For another task in an existing checkout, run `git switch develop` and `git pull --ff-only origin develop`, then create a fresh task branch and solver file.
+
+## Shared tools and solver interfaces
+
+| Role | Files |
+| --- | --- |
+| Course tools and data | `course_package/` contains the supplied runner, official objective, projection, and public instances. Use these files as supplied. |
+| Shared tools | `benchmark.py` compares solver files, `visualize.py` creates static plots, `record_trace.py` saves traces and renders HTML, `render_trace.py` redraws saved traces, and `trace_diagnostics.py` reports scores and edge losses. `convergence_trace.py` holds the shared trace format. |
+| Algorithms and examples | `solver.py` is the supplied-start control, `pgd.py` is the PGD algorithm, and `example_initialized_pgd.py` demonstrates an initializer and optimizer working together. Put your method in a separate Python file at the repository root. |
+
+- **Initializer** `initialize(param, max_time)` returns a finite positions array of shape `(param.n, param.q)`, including anchors. Read `param` without mutating it and return within `max_time` seconds.
+- **Optimizer** `solve(param, max_time, *, record=None)` returns the same shape and honors the same deadline. Optimizers that accept a supplied start can take an optional `x0` keyword. For example, `run_pgd(param, remaining, x0=positions)` projects and copies the supplied start. Omitting `x0` uses `param.x0` as before.
+- **Official entry point** `solver(param, max_time)` is what the grader, benchmark, and static visualization call. For a trace-compatible solver, it can simply return `solve(param, max_time)`. Diagnostic recording is enabled only when `record_trace.py` supplies a callback.
+
+The example initializer uses the existing collapsed reference. The example solver gives initialization up to one fifth of the total budget, subtracts the time actually used, and passes the remaining time and the returned positions to PGD. Its diagnostic timestamps include initialization time. Copy the example and replace its initializer or optimizer to try your own method.
 
 ## Verify the starting-point solver
 
@@ -57,16 +89,6 @@ On Windows PowerShell:
 ```
 
 Expect 24 rows with status `ok` and finite objectives, one run per instance at each time limit (5 and 20 seconds). To check the objective values, repeat the command with `course_package/example_solver.py` in place of `solver.py`. The `objective` column should match for every instance and run.
-
-## Create a task branch and solver file
-
-```sh
-git switch develop
-git pull --ff-only origin develop
-git switch -c feature/my-algorithm
-```
-
-Copy the starter to your own file with `cp solver.py my_algorithm.py` on Linux, macOS, or WSL, or `Copy-Item solver.py my_algorithm.py` in PowerShell. Edit `my_algorithm.py` and keep the function signature `solver(param, max_time)`. Return an array of shape `(param.n, param.q)` that includes the anchors. Use a distinct branch and filename for each task. Your solver file can run directly through the benchmark.
 
 ## Run and compare solvers
 
@@ -90,7 +112,18 @@ The CSV also records the runner seed (0), Git commit and working-tree state, and
 
 ## Benchmark a standalone initializer
 
-Copy `solver.py` to `my_initializer.py` with `cp solver.py my_initializer.py` or `Copy-Item solver.py my_initializer.py` in PowerShell. In `solver(param, max_time)`, return the initialized coordinates as soon as initialization finishes. Compare them with the supplied random `param.x0` using the same instance and budget.
+Save this starter as `my_initializer.py` and replace `initialize` with your method. The benchmark calls `solver`, which returns the initialized coordinates as soon as initialization finishes.
+
+```python
+def initialize(param, max_time):
+    return param.x0.copy()
+
+
+def solver(param, max_time):
+    return initialize(param, max_time)
+```
+
+Compare the result with the supplied random `param.x0` using the same instance and budget.
 
 ```sh
 .venv/bin/python -B benchmark.py solver.py my_initializer.py --only A_1.npz B_1.npz --run short --output results/initialization.csv
@@ -100,19 +133,7 @@ In PowerShell, start the same command with `.\.venv\Scripts\python.exe`. The ini
 
 ## Visualize a public instance
 
-Install Matplotlib in the same virtual environment on Linux, macOS, or WSL.
-
-```sh
-.venv/bin/python -m pip install matplotlib==3.10.8
-```
-
-In Windows PowerShell, run the following.
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install matplotlib==3.10.8
-```
-
-Run the examples from the repository root and open the PNGs in `results/`.
+With the Quick Start environment, run these examples from the repository root and open the PNGs in `results/`.
 
 ```sh
 .venv/bin/python -B visualize.py A_1.npz solver.py --run short --edges --output visualization-A_1.png
@@ -127,15 +148,15 @@ The circles are sensors and the diamonds are anchors. The tool scores and plots 
 
 ## Record and animate an optimization trace
 
-Keep the official `solver(param, max_time)` entry point. Give your internal algorithm function an optional recording callback, for example `run_algorithm(param, max_time, *, record=None)`. Have `solver` call it with the default so grading and benchmarks run with recording disabled.
+Give your solver file a `solve(param, max_time, *, record=None)` function and have the official `solver` call it without a callback. Use `record_trace.py INSTANCE SOLVER --run short` to run it separately for diagnostics. This command saves an NPZ and renders a standalone HTML viewer with the same filename stem. Use `--output` with a new `.npz` path to choose where both files go.
 
-In a separate diagnostic run, pass a recorder and save the trace after the algorithm returns. Here `param` is the course instance you loaded and `run_algorithm` is your own function.
+To record from Python, pass a recorder and save the trace after the algorithm returns. Here `param` is the course instance you loaded and `solve` is your own function.
 
 ```python
 from convergence_trace import Trace
 
 trace = Trace("A_1.npz", "My diagnostic run")
-run_algorithm(param, 20, record=trace.record)
+solve(param, 20, record=trace.record)
 trace.save("results/my-trace.npz")
 ```
 
@@ -175,8 +196,7 @@ Generate the static `x0` versus PGD plots and the interactive convergence viewer
 ```sh
 for instance in A_1 B_1 C_1 D_1; do
   .venv/bin/python -B visualize.py "${instance}.npz" pgd.py --run short --output "pgd-${instance}-comparison.png"
-  .venv/bin/python -B -m examples.pgd_trace "${instance}.npz" --run short
-  .venv/bin/python -B render_trace.py "results/pgd-${instance}-short.npz"
+  .venv/bin/python -B record_trace.py "${instance}.npz" pgd.py --run short
 done
 ```
 
@@ -185,8 +205,7 @@ In PowerShell, run the benchmark command with `.\.venv\Scripts\python.exe` and u
 ```powershell
 foreach ($instance in 'A_1', 'B_1', 'C_1', 'D_1') {
     .\.venv\Scripts\python.exe -B visualize.py "${instance}.npz" pgd.py --run short --output "pgd-${instance}-comparison.png"
-    .\.venv\Scripts\python.exe -B -m examples.pgd_trace "${instance}.npz" --run short
-    .\.venv\Scripts\python.exe -B render_trace.py "results/pgd-${instance}-short.npz"
+    .\.venv\Scripts\python.exe -B record_trace.py "${instance}.npz" pgd.py --run short
 }
 ```
 
