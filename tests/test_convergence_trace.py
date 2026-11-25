@@ -9,12 +9,16 @@ import unittest
 from base64 import b64decode
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 from uuid import uuid4
 
 import numpy as np
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from PIL import Image
 
 from convergence_trace import Trace
+from render_trace import render_trace
 from visualize import COURSE, RESULTS, ROOT
 
 
@@ -51,6 +55,42 @@ class TraceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "same shape"):
             trace.record(x[:2], iteration=2, elapsed_s=0.2)
         self.assertEqual(len(trace.positions), 1)
+
+    def test_objective_axis_preserves_values_and_uses_linear_scale_if_any_score_is_zero(self):
+        param = SimpleNamespace(n=2, free=[1], anchor=[0])
+        problem = SimpleNamespace(
+            project=lambda x, param: x,
+            objective=lambda x, param: x[1, 0],
+        )
+        original_draw = FigureCanvasAgg.draw
+        cases = (
+            ((0.8, 0.4, 0.2, 0.1, 0.05), "log"),
+            ((0.8, 0.4, 0.2, 0.1, 0.0), "linear"),
+            ((0.8, 0.0, 0.2, 0.1, 0.05), "linear"),
+        )
+        for scores, scale in cases:
+            with self.subTest(scores=scores):
+                trace = Trace("A_1.npz")
+                for i, score in enumerate(scores):
+                    trace.record([[0, 0], [score, 0.5]], iteration=i, elapsed_s=i)
+                axes = []
+
+                def capture(canvas):
+                    axes.append(canvas.figure.axes[1])
+                    original_draw(canvas)
+
+                with (
+                    tempfile.TemporaryDirectory() as directory,
+                    patch("render_trace.MAX_FRAMES", 3),
+                    patch.object(FigureCanvasAgg, "draw", capture),
+                    patch("builtins.print"),
+                ):
+                    render_trace(trace, problem, param, Path(directory) / "trace.html")
+
+                history = axes[-1]
+                self.assertEqual(history.get_yscale(), scale)
+                np.testing.assert_array_equal(history.lines[0].get_ydata(), scores[::2])
+                self.assertEqual(history.get_title(), f"Objective {scores[-1]:.8g}")
 
     def test_default_html_viewer_embeds_sparse_frames_and_controls(self):
         sys.path.insert(0, str(COURSE))

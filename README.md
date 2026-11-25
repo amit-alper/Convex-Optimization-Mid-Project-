@@ -141,7 +141,7 @@ trace.save("results/my-trace.npz")
 
 Inside the algorithm, start a `time.perf_counter()` timer. At a selected iteration, call `record(x, iteration=k, elapsed_s=time.perf_counter() - started)` if `record` is present. Pass the full `(param.n, param.q)` position array. Aim for roughly 30 snapshots, including the initial and final positions once each. The recorder copies each selected array, so the algorithm can continue updating it in place. `Trace.load("results/my-trace.npz")` reads the arrays, iterations, time stamps, and label independently of the solver.
 
-The artificial example below uses prescribed positions and synthetic timing. The second command reads the saved NPZ, projects and scores the selected snapshots with the course package, and writes a self-contained HTML viewer. It keeps the first and final snapshots and uses at most 32 frames. The right panel plots projected objective against elapsed time.
+The artificial example below uses prescribed positions and synthetic timing. The second command reads the saved NPZ, projects and scores the snapshots with the course package, and writes a self-contained HTML viewer. It keeps the first and final snapshots and uses at most 32 frames. The right panel plots the original projected objective values against elapsed time on a logarithmic Y-axis. It uses a linear scale if any saved snapshot scores zero.
 
 ```sh
 .venv/bin/python -B -m examples.artificial_trace
@@ -151,6 +151,46 @@ The artificial example below uses prescribed positions and synthetic timing. The
 Open `results/artificial-trace.html` directly in a modern browser. The file embeds the frames and controls and works offline. Use **Play/Pause**, **Previous/Next**, the left and right arrow keys, or the **Frame** slider. The **Speed** menu ranges from 0.25× to 4×. Playback holds the final frame for 1.5 seconds at normal speed before looping.
 
 In PowerShell, start the same commands with `.\.venv\Scripts\python.exe`. Use the Matplotlib environment above. For repeat runs, choose a fresh trace or viewer path with `--output`. An explicit `.gif` output path still exports a GIF.
+
+## Projected gradient descent experiment
+
+`pgd.py` starts at the supplied `x0`. For each measured edge $(i,j)$, let $r_{ij}=\lVert x_i-x_j\rVert_2-d_{ij}$. The objective is the mean of the official losses $\rho(r_{ij})$ over all $m$ edges. The derivative $\rho'(r)$ is $r$ for the squared loss and $\operatorname{clip}(r,-\delta,\delta)$ for Huber. For an edge of nonzero length, its contribution to the first endpoint is
+
+$$
+\frac{\rho'(r_{ij})}{m}\frac{x_i-x_j}{\lVert x_i-x_j\rVert_2}.
+$$
+
+Subtract the same contribution at the second endpoint. At coincident endpoints, the norm has no unique gradient direction, so the code uses zero for that edge's contribution. Anchor gradient entries are zero because anchors are fixed.
+
+For each step size $\alpha$, form $y=P(x-\alpha g)$ with the official projection. Accept $y$ if $f(y)\le f(x)+10^{-4}\langle g,y-x\rangle$ and the computed objective strictly decreases. Halve $\alpha$ after a rejected trial. The first trial uses $0.1/\max_{i,k}|g_{ik}|$, which limits the largest coordinate move before projection to 0.1. Later trials start at twice the previous accepted step, capped by the same gradient-scaled limit. The solver checks a deadline at 95% of the supplied budget, including around trial evaluations, and returns the last accepted feasible iterate.
+
+Run the short-budget comparison from the repository root.
+
+```sh
+.venv/bin/python -B benchmark.py solver.py pgd.py --only A_1.npz B_1.npz C_1.npz D_1.npz --run short --output results/pgd-short.csv
+```
+
+Generate the static `x0` versus PGD plots and the interactive convergence viewers. After recording the start and first accepted step, the diagnostic recorder multiplies each sampled iteration number by 1.25 and rounds up to choose the next snapshot. It also records the final accepted iterate. Official benchmarks use `solver(param, max_time)` with recording disabled. Each plot or trace runs PGD separately, so its final objective can vary with the number of steps completed in time.
+
+```sh
+for instance in A_1 B_1 C_1 D_1; do
+  .venv/bin/python -B visualize.py "${instance}.npz" pgd.py --run short --output "pgd-${instance}-comparison.png"
+  .venv/bin/python -B -m examples.pgd_trace "${instance}.npz" --run short
+  .venv/bin/python -B render_trace.py "results/pgd-${instance}-short.npz"
+done
+```
+
+In PowerShell, run the benchmark command with `.\.venv\Scripts\python.exe` and use this loop for the plots and traces.
+
+```powershell
+foreach ($instance in 'A_1', 'B_1', 'C_1', 'D_1') {
+    .\.venv\Scripts\python.exe -B visualize.py "${instance}.npz" pgd.py --run short --output "pgd-${instance}-comparison.png"
+    .\.venv\Scripts\python.exe -B -m examples.pgd_trace "${instance}.npz" --run short
+    .\.venv\Scripts\python.exe -B render_trace.py "results/pgd-${instance}-short.npz"
+}
+```
+
+Open the PNGs and HTML viewers in `results/`. Use `--output` with fresh filenames for repeat runs.
 
 ## Test and submit a pull request
 

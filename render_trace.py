@@ -37,10 +37,16 @@ def render_trace(trace, problem, param, output):
 
     count = len(trace.positions)
     indices = np.linspace(0, count - 1, min(count, MAX_FRAMES), dtype=int)
-    positions = [problem.project(trace.positions[i], param) for i in indices]
-    objectives = [problem.objective(x, param) for x in positions]
-    if not np.isfinite(objectives).all():
+    frame_indices = set(indices)
+    positions, scores = [], []
+    for i, snapshot in enumerate(trace.positions):
+        projected = problem.project(snapshot, param)
+        scores.append(problem.objective(projected, param))
+        if i in frame_indices:
+            positions.append(projected)
+    if not np.isfinite(scores).all():
         raise ValueError("the trace has a nonfinite projected objective")
+    objectives = [scores[i] for i in indices]
     elapsed = [trace.elapsed_s[i] for i in indices]
 
     figure = Figure(figsize=(9.2, 4.2), dpi=105)
@@ -58,10 +64,15 @@ def render_trace(trace, problem, param, output):
                     edgecolors="white", linewidths=0.8, label="Anchors", zorder=3)
     spatial.legend(loc="upper center", bbox_to_anchor=(0.5, -0.16), ncols=2, frameon=False)
 
-    low, high = min(objectives), max(objectives)
-    padding = (high - low) * 0.08 or max(abs(high) * 0.03, 1e-12)
+    low, high = min(scores), max(scores)
+    if low > 0:
+        history.set_yscale("log")
+        limits = (low / 1.1, high * 1.1)
+    else:
+        padding = (high - low) * 0.08 or max(abs(high) * 0.03, 1e-12)
+        limits = (low - padding, high + padding)
     duration = elapsed[-1] or 1
-    history.set(xlim=(-0.02 * duration, 1.02 * duration), ylim=(low - padding, high + padding),
+    history.set(xlim=(-0.02 * duration, 1.02 * duration), ylim=limits,
                 xlabel="Elapsed time (s)", ylabel="Official objective")
     history.grid(alpha=0.25)
     line, = history.plot([], [], color="#284869", linewidth=1.6)
