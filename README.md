@@ -12,7 +12,7 @@ Use Git and Python 3.12. In PowerShell, `python --version` should show Python 3.
 git clone --branch main https://github.com/amit-alper/Convex-Optimization-Mid-Project-.git
 cd Convex-Optimization-Mid-Project-
 python3.12 -m venv .venv
-.venv/bin/python -m pip install numpy==2.5.5 scipy==1.18.1 matplotlib==3.10.8
+.venv/bin/python -m pip install -r requirements.txt
 git switch -c feature/my-algorithm
 cp example_initialized_pgd.py my_algorithm.py
 .venv/bin/python -B course_package/test_solver.py course_package/example_solver.py --only A_1.npz B_1.npz --run short
@@ -29,7 +29,7 @@ cp example_initialized_pgd.py my_algorithm.py
 git clone --branch main https://github.com/amit-alper/Convex-Optimization-Mid-Project-.git
 cd Convex-Optimization-Mid-Project-
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install numpy==2.5.5 scipy==1.18.1 matplotlib==3.10.8
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 git switch -c feature/my-algorithm
 Copy-Item example_initialized_pgd.py my_algorithm.py
 .\.venv\Scripts\python.exe -B course_package/test_solver.py course_package/example_solver.py --only A_1.npz B_1.npz --run short
