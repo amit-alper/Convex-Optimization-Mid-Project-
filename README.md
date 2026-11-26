@@ -12,7 +12,7 @@ Use Git and Python 3.12. In PowerShell, `python --version` should show Python 3.
 git clone --branch main https://github.com/amit-alper/Convex-Optimization-Mid-Project-.git
 cd Convex-Optimization-Mid-Project-
 python3.12 -m venv .venv
-.venv/bin/python -m pip install numpy==2.5.5 matplotlib==3.10.8
+.venv/bin/python -m pip install numpy==2.5.5 scipy==1.18.1 matplotlib==3.10.8
 git switch -c feature/my-algorithm
 cp example_initialized_pgd.py my_algorithm.py
 .venv/bin/python -B course_package/test_solver.py course_package/example_solver.py --only A_1.npz B_1.npz --run short
@@ -29,7 +29,7 @@ cp example_initialized_pgd.py my_algorithm.py
 git clone --branch main https://github.com/amit-alper/Convex-Optimization-Mid-Project-.git
 cd Convex-Optimization-Mid-Project-
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install numpy==2.5.5 matplotlib==3.10.8
+.\.venv\Scripts\python.exe -m pip install numpy==2.5.5 scipy==1.18.1 matplotlib==3.10.8
 git switch -c feature/my-algorithm
 Copy-Item example_initialized_pgd.py my_algorithm.py
 .\.venv\Scripts\python.exe -B course_package/test_solver.py course_package/example_solver.py --only A_1.npz B_1.npz --run short
@@ -51,6 +51,8 @@ For another task in an existing checkout, run `git switch main` and `git pull --
 | Course tools and data | `course_package/` contains the supplied runner, official objective, projection, and public instances. Use these files as supplied. |
 | Shared tools | `benchmark.py` compares solver files, `visualize.py` creates static plots, `record_trace.py` saves traces and renders HTML, `render_trace.py` redraws saved traces, and `trace_diagnostics.py` reports scores and edge losses. `convergence_trace.py` holds the shared trace format. |
 | Algorithms and examples | `solver.py` is the supplied-start control, `pgd.py` is the PGD algorithm, and `example_initialized_pgd.py` demonstrates an initializer and optimizer working together. Put your method in a separate Python file at the repository root. |
+| Course baselines | `mds_pgd.py` runs PGD from classical MDS, and `levenberg_marquardt.py` runs Levenberg–Marquardt from `x0`. Both follow the interface below. |
+| Shared solver library | `core/derivatives.py` (`Model`: residuals, gradient, sparse Jacobian, Huber weights), `core/mds.py` (MDS-MAP steps), and `core/initialization/` (starting points, one file per family). Root solver files import `core` directly, because the runner puts the solver file's folder on the import path. |
 
 - **Initializer** `initialize(param, max_time)` returns a finite positions array of shape `(param.n, param.q)`, including anchors. Read `param` without mutating it and return within `max_time` seconds.
 - **Optimizer** `solve(param, max_time, *, record=None)` returns the same shape and honors the same deadline. Optimizers that accept a supplied start can take an optional `x0` keyword. For example, `run_pgd(param, remaining, x0=positions)` projects and copies the supplied start. Omitting `x0` uses `param.x0` as before.
@@ -196,6 +198,19 @@ foreach ($instance in 'A_1', 'B_1', 'C_1', 'D_1') {
 ```
 
 Open the PNGs and HTML viewers in `results/`. Use `--output` with fresh filenames for repeat runs.
+
+## Course baselines
+
+The handout names two baselines. `mds_pgd.py` initializes with MDS-MAP (`core/mds.py`): shortest-path distances, classical MDS, then a similarity fit to the anchors. Its `solve` subtracts the measured MDS time from 90% of the budget and passes the rest, with the MDS positions, to `pgd.run_pgd`. `levenberg_marquardt.py` provides `run_lm(param, max_time, *, x0=None, record=None)` with the same calling convention as `run_pgd`. Each iteration solves the damped normal equations $(J^\top W J + \lambda\,\mathrm{diag}(J^\top W J))\,s = -J^\top W r$ over the free coordinates, where $W$ holds Huber IRLS weights (all ones for squared loss). It projects the trial point and accepts it only if the objective decreases. LM returns by 90% of the budget, because one sparse solve on type C can take a noticeable fraction of a second. Tunable constants sit at the top of each file.
+
+```sh
+.venv/bin/python -B benchmark.py solver.py mds_pgd.py levenberg_marquardt.py --run both --output results/baselines.csv
+.venv/bin/python -B visualize.py C_1.npz mds_pgd.py levenberg_marquardt.py --run short --output baselines-C_1.png
+.venv/bin/python -B record_trace.py C_1.npz levenberg_marquardt.py --run short --output results/lm-C_1-short.npz
+.venv/bin/python -B -m unittest tests.test_baselines -v
+```
+
+In PowerShell, start the same commands with `.\.venv\Scripts\python.exe`. To build on a baseline, import `run_lm` or an initializer from `core/initialization/` in your own root-level solver file.
 
 ## Compare saved traces with a collapsed reference
 

@@ -4,43 +4,45 @@ Each iteration solves (J^T W J + lambda D) step = -J^T W r over the free sensor 
   - J: residual Jacobian (core.derivatives.Model.jacobian)
   - W: Huber weights, i.e. iteratively reweighted least squares (all ones for squared loss)
   - D: diag(J^T W J), Marquardt's scaling of the damping
-The trial point is projected onto the box (as the handout's LM baseline for Topic 3 does)
-and accepted only if the objective decreases; lambda shrinks after a success, grows after a failure.
+The trial point is projected onto the box and accepted only if the objective decreases;
+lambda shrinks after a success and grows after a failure.
 """
 
-import sys
 from math import ceil
-from pathlib import Path
 from time import perf_counter
 
 import numpy as np
 import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # repository root, for core/
-
-from problem import project                                     # noqa: E402  (course package)
-from core.derivatives import Model                              # noqa: E402
-from core.initialization.baseline_initialization import from_x0  # noqa: E402
-from baseline_solvers import constants                          # noqa: E402  (tunable values)
+from problem import project
+from core.derivatives import Model
 
 
-def run_lm(param, x_start, deadline, *, record=None, started=None):
-    """Run LM from x_start until the perf_counter() deadline; return the last accepted point.
+TIME_FRACTION = 0.9      # one sparse solve can take a while on C, so keep a wider margin than PGD
+LAMBDA_START = 1e-3      # initial damping
+LAMBDA_DOWN = 0.3        # multiply after an accepted step
+LAMBDA_UP = 10.0         # multiply after a rejected step
+LAMBDA_MAX = 1e12        # stop: no decrease even with a tiny gradient step
+
+
+def run_lm(param, max_time, *, x0=None, record=None):
+    """Run LM from the supplied array or the instance's default start; return the last accepted point.
 
     record(x, iteration=, elapsed_s=) is called on a geometric schedule (convergence_trace.Trace).
     """
-    started = perf_counter() if started is None else started
+    started = perf_counter()
+    deadline = started + TIME_FRACTION * max_time
     model = Model(param)
-    x = project(x_start, param)
-    value = model.objective(x)
+    x = project(param.x0 if x0 is None else x0, param)
     if record is not None:
-        record(x, iteration=0, elapsed_s=perf_counter() - started)
+        record(x, iteration=0, elapsed_s=0.0)
+    value = model.objective(x)
 
-    damping = constants.LM_LAMBDA_START
+    damping = LAMBDA_START
     iteration = last_recorded = 0
     next_snapshot = 1
-    while perf_counter() < deadline and damping < constants.LM_LAMBDA_MAX:
+    while perf_counter() < deadline and damping < LAMBDA_MAX:
         r = model.residuals(x)
         jac = model.jacobian(x)
         weights = model.huber_weights(r)
@@ -50,16 +52,18 @@ def run_lm(param, x_start, deadline, *, record=None, started=None):
         scaling = np.maximum(diagonal, 1e-12 * max(diagonal.max(), 1e-300))
 
         vector = model.to_vector(x)
-        while perf_counter() < deadline and damping < constants.LM_LAMBDA_MAX:
+        accepted = False
+        while perf_counter() < deadline and damping < LAMBDA_MAX:
             step = spsolve(normal + sp.diags(damping * scaling, format="csc"), rhs)
             candidate = project(model.to_positions(vector + step, x), param)
             candidate_value = model.objective(candidate)
             if candidate_value < value:
                 x, value = candidate, candidate_value
-                damping *= constants.LM_LAMBDA_DOWN
+                damping *= LAMBDA_DOWN
+                accepted = True
                 break
-            damping *= constants.LM_LAMBDA_UP
-        else:
+            damping *= LAMBDA_UP
+        if not accepted:
             break                                               # out of time or stalled
 
         iteration += 1
@@ -72,8 +76,14 @@ def run_lm(param, x_start, deadline, *, record=None, started=None):
     return x
 
 
+def initialize(param, max_time):
+    """The course starting point x0 (random sensors in the box, anchors in place)."""
+    return project(param.x0, param)
+
+
+def solve(param, max_time, *, record=None):
+    return run_lm(param, max_time, x0=initialize(param, max_time), record=record)
+
+
 def solver(param, max_time):
-    """LM from the course starting point x0 for the whole budget."""
-    started = perf_counter()
-    deadline = started + constants.TIME_FRACTION * max_time
-    return run_lm(param, from_x0(param), deadline, started=started)
+    return solve(param, max_time)
