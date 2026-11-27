@@ -20,6 +20,7 @@ def random_start(param, seed=None):
     return project(rng.random((param.n, param.q)), param)
 
 
-def mds_start(param, seed=0):
-    """The handout's PGD baseline start: MDS-MAP (core/mds.py), projected onto the box."""
-    return project(mds_map(param, seed), param)
+def mds_start(param, seed=0, *, deadline=None):
+    """Project the MDS-MAP layout, falling back to x0 when its deadline prevents completion."""
+    positions = mds_map(param, seed, deadline=deadline)
+    return from_x0(param) if positions is None else project(positions, param)

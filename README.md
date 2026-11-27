@@ -201,13 +201,20 @@ Open the PNGs and HTML viewers in `results/`. Use `--output` with fresh filename
 
 ## Course baselines
 
-The handout names two baselines. `mds_pgd.py` initializes with MDS-MAP (`core/mds.py`): shortest-path distances, classical MDS, then a similarity fit to the anchors. Its `solve` subtracts the measured MDS time from 90% of the budget and passes the rest, with the MDS positions, to `pgd.run_pgd`. `levenberg_marquardt.py` provides `run_lm(param, max_time, *, x0=None, record=None)` with the same calling convention as `run_pgd`. Each iteration solves the damped normal equations $(J^\top W J + \lambda\,\mathrm{diag}(J^\top W J))\,s = -J^\top W r$ over the free coordinates, where $W$ holds Huber IRLS weights (all ones for squared loss). It projects the trial point and accepts it only if the objective decreases. LM returns by 90% of the budget, because one sparse solve on type C can take a noticeable fraction of a second. Tunable constants sit at the top of each file.
+The handout names two baselines. `mds_pgd.py` initializes with MDS-MAP (`core/mds.py`) using shortest-path distances, classical MDS, and a similarity fit to the anchors. It passes the projected start and the remaining budget to `pgd.run_pgd`. `levenberg_marquardt.py` provides `run_lm(param, max_time, *, x0=None, record=None)` with the same calling convention as `run_pgd`. Each iteration solves the damped normal equations $(J^\top W J + \lambda\,\mathrm{diag}(J^\top W J))\,s = -J^\top W r$ over the free coordinates, where $W$ holds Huber IRLS weights (all ones for squared loss). It projects the trial point and accepts it only if the objective decreases.
+
+Both baselines use an internal deadline at 90% of the requested time.
+
+- MDS estimates shortest-path cost from the node and edge counts and embedding cost from the squared node count. It checks the combined estimate before starting and checks the embedding estimate again after shortest paths. If a stage cannot start or MDS finishes after the internal deadline, initialization returns the projected course `x0`. Time already spent still counts against PGD's budget. The solver returns the initialized point directly when less than 25 ms remains for PGD's first objective and gradient.
+- LM starts with a trial reserve of at least 25 ms, scaled with the square of the free coordinate count. It raises the reserve to at least twice the slowest completed trial, including the damped system build, solve, projection, and scoring. It checks time before matrix work and again immediately before each sparse solve. A trial that overruns the internal deadline is discarded and LM returns the last accepted point.
+
+The reserves are timing estimates based on public instance sizes. They may skip work that would have fit on a faster machine. SciPy calls already in progress run to completion, so machine load or an unexpectedly slow call can still cause a late return.
 
 ```sh
 .venv/bin/python -B benchmark.py solver.py mds_pgd.py levenberg_marquardt.py --run both --output results/baselines.csv
 .venv/bin/python -B visualize.py C_1.npz mds_pgd.py levenberg_marquardt.py --run short --output baselines-C_1.png
 .venv/bin/python -B record_trace.py C_1.npz levenberg_marquardt.py --run short --output results/lm-C_1-short.npz
-.venv/bin/python -B -m unittest tests.test_baselines -v
+.venv/bin/python -B -m unittest discover -s tests -p test_baselines.py -v
 ```
 
 In PowerShell, start the same commands with `.\.venv\Scripts\python.exe`. To build on a baseline, import `run_lm` or an initializer from `core/initialization/` in your own root-level solver file.

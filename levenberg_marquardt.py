@@ -19,7 +19,10 @@ from problem import project
 from core.derivatives import Model
 
 
-TIME_FRACTION = 0.9      # one sparse solve can take a while on C, so keep a wider margin than PGD
+TIME_FRACTION = 0.9      # leave time for return overhead and runtime variation
+MIN_TRIAL_TIME = 0.025
+TRIAL_SECONDS_PER_PAIR = 1.6e-8   # initial reserve reaches 0.4 s at 5,000 free coordinates
+TRIAL_TIME_FACTOR = 2.0          # reserve at least twice the slowest completed trial
 LAMBDA_START = 1e-3      # initial damping
 LAMBDA_DOWN = 0.3        # multiply after an accepted step
 LAMBDA_UP = 10.0         # multiply after a rejected step
@@ -33,16 +36,22 @@ def run_lm(param, max_time, *, x0=None, record=None):
     """
     started = perf_counter()
     deadline = started + TIME_FRACTION * max_time
-    model = Model(param)
     x = project(param.x0 if x0 is None else x0, param)
     if record is not None:
         record(x, iteration=0, elapsed_s=0.0)
+
+    free_coordinates = len(param.free) * param.q
+    trial_time = max(MIN_TRIAL_TIME, TRIAL_SECONDS_PER_PAIR * free_coordinates ** 2)
+    if deadline - perf_counter() < trial_time:
+        return x
+
+    model = Model(param)
     value = model.objective(x)
 
     damping = LAMBDA_START
     iteration = last_recorded = 0
     next_snapshot = 1
-    while perf_counter() < deadline and damping < LAMBDA_MAX:
+    while deadline - perf_counter() >= trial_time and damping < LAMBDA_MAX:
         r = model.residuals(x)
         jac = model.jacobian(x)
         weights = model.huber_weights(r)
@@ -53,10 +62,22 @@ def run_lm(param, max_time, *, x0=None, record=None):
 
         vector = model.to_vector(x)
         accepted = False
-        while perf_counter() < deadline and damping < LAMBDA_MAX:
-            step = spsolve(normal + sp.diags(damping * scaling, format="csc"), rhs)
+        while damping < LAMBDA_MAX:
+            trial_started = perf_counter()
+            if deadline - trial_started < trial_time:
+                break
+            system = normal + sp.diags(damping * scaling, format="csc")
+            if deadline - perf_counter() < trial_time:
+                break
+            step = spsolve(system, rhs)
+            if perf_counter() >= deadline:
+                break
             candidate = project(model.to_positions(vector + step, x), param)
             candidate_value = model.objective(candidate)
+            trial_finished = perf_counter()
+            if trial_finished >= deadline:
+                break
+            trial_time = max(trial_time, TRIAL_TIME_FACTOR * (trial_finished - trial_started))
             if candidate_value < value:
                 x, value = candidate, candidate_value
                 damping *= LAMBDA_DOWN
@@ -82,7 +103,7 @@ def initialize(param, max_time):
 
 
 def solve(param, max_time, *, record=None):
-    return run_lm(param, max_time, x0=initialize(param, max_time), record=record)
+    return run_lm(param, max_time, record=record)
 
 
 def solver(param, max_time):

@@ -14,16 +14,38 @@ References (PDFs in papers/):
   [Biswas04]  Biswas, Ye, Semidefinite programming for ad hoc wireless sensor network localization, IPSN 2004.
 """
 
+from time import perf_counter
+
 import numpy as np
 import scipy.sparse as sp
 from scipy.sparse.csgraph import shortest_path
 from scipy.sparse.linalg import eigsh
 
 
-def mds_map(param, seed=0):
-    """All three steps: an n x q layout fit to the anchors (not yet projected onto the box)."""
+MIN_STAGE_TIME = 0.01
+PATH_SECONDS_PER_WORK_UNIT = 6e-8
+EMBED_SECONDS_PER_PAIR = 8e-8
+
+
+def mds_map(param, seed=0, *, deadline=None):
+    """Return the aligned layout, or None if the optional deadline rules out a stage."""
+    if deadline is not None:
+        # Estimates with headroom for the public graphs. Neither SciPy call is interruptible here.
+        path_time = max(MIN_STAGE_TIME, PATH_SECONDS_PER_WORK_UNIT * param.n * (param.n + len(param.edges)))
+        embed_time = max(MIN_STAGE_TIME, EMBED_SECONDS_PER_PAIR * param.n ** 2)
+        if deadline - perf_counter() < path_time + embed_time:
+            return None
+
     distances = shortest_path_distances(param)
-    return align_to_anchors(classical_mds(distances, param.q, seed), param)
+    if deadline is not None and deadline - perf_counter() < embed_time:
+        return None
+    relative = classical_mds(distances, param.q, seed)
+    if deadline is not None and perf_counter() >= deadline:
+        return None
+    positions = align_to_anchors(relative, param)
+    if deadline is not None and perf_counter() >= deadline:
+        return None
+    return positions
 
 
 def shortest_path_distances(param):

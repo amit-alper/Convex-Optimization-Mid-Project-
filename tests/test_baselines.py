@@ -16,12 +16,23 @@ import problem
 import pgd
 import levenberg_marquardt
 import mds_pgd
+from core import mds
 from core.derivatives import Model
 from core.initialization.baseline_initialization import mds_start
 
 
 def load(name):
     return problem.load(COURSE / "public" / name)
+
+
+class Clock:
+    """Advance time only at the operations a deadline test controls."""
+
+    def __init__(self):
+        self.elapsed = 0.0
+
+    def __call__(self):
+        return self.elapsed
 
 
 class CoreTests(unittest.TestCase):
@@ -52,6 +63,120 @@ class CoreTests(unittest.TestCase):
 
 
 class BaselineTests(unittest.TestCase):
+    def test_mds_short_budget_skips_shortest_paths(self):
+        param = load("C_1.npz")
+        clock = Clock()
+        callback = Mock()
+        with (patch.object(mds_pgd, "perf_counter", clock),
+              patch.object(mds, "perf_counter", clock),
+              patch.object(mds, "shortest_path_distances", return_value=None) as paths,
+              patch.object(mds, "classical_mds", return_value=param.x0),
+              patch.object(mds_pgd, "run_pgd") as optimize):
+            x = mds_pgd.solve(param, 0.02, record=callback)
+        paths.assert_not_called()
+        optimize.assert_not_called()
+        np.testing.assert_array_equal(x, problem.project(param.x0, param))
+        callback.assert_called_once_with(x, iteration=0, elapsed_s=0.0)
+
+    def test_mds_skips_eigensolve_when_shortest_paths_use_the_reserve(self):
+        param = load("A_1.npz")
+        clock = Clock()
+
+        def slow_paths(param):
+            clock.elapsed = 0.085
+            return np.zeros((param.n, param.n))
+
+        with (patch.object(mds_pgd, "perf_counter", clock),
+              patch.object(mds, "perf_counter", clock),
+              patch.object(mds, "shortest_path_distances", side_effect=slow_paths),
+              patch.object(mds, "classical_mds", return_value=param.x0) as embed):
+            x = mds_pgd.initialize(param, 0.1)
+        embed.assert_not_called()
+        np.testing.assert_array_equal(x, problem.project(param.x0, param))
+
+    def test_mds_discards_initialization_that_finishes_after_the_deadline(self):
+        param = load("A_1.npz")
+        clock = Clock()
+
+        def slow_alignment(y, param):
+            clock.elapsed = 0.095
+            return np.zeros_like(y)
+
+        with (patch.object(mds_pgd, "perf_counter", clock),
+              patch.object(mds, "perf_counter", clock),
+              patch.object(mds, "align_to_anchors", side_effect=slow_alignment) as align):
+            x = mds_pgd.initialize(param, 0.1)
+        align.assert_called_once()
+        np.testing.assert_array_equal(x, problem.project(param.x0, param))
+
+    def test_lm_short_budget_returns_projected_supplied_start(self):
+        param = load("A_1.npz")
+        start = np.full_like(param.x0, 1.5)
+        clock = Clock()
+        callback = Mock()
+
+        def slow_step(matrix, rhs):
+            clock.elapsed = 0.03
+            return np.zeros_like(rhs)
+
+        with (patch.object(levenberg_marquardt, "perf_counter", clock),
+              patch.object(levenberg_marquardt, "spsolve", side_effect=slow_step) as solve):
+            x = levenberg_marquardt.run_lm(param, 0.02, x0=start, record=callback)
+        solve.assert_not_called()
+        np.testing.assert_array_equal(x, problem.project(start, param))
+        callback.assert_called_once_with(x, iteration=0, elapsed_s=0.0)
+
+    def test_lm_rechecks_budget_after_building_the_damped_system(self):
+        param = load("A_1.npz")
+        clock = Clock()
+        diags = levenberg_marquardt.sp.diags
+
+        def slow_diagonal(*args, **kwargs):
+            if kwargs.get("format") == "csc":
+                clock.elapsed = 0.085
+            return diags(*args, **kwargs)
+
+        def slow_step(matrix, rhs):
+            clock.elapsed += 0.04
+            return np.zeros_like(rhs)
+
+        with (patch.object(levenberg_marquardt, "perf_counter", clock),
+              patch.object(levenberg_marquardt.sp, "diags", side_effect=slow_diagonal) as diagonal,
+              patch.object(levenberg_marquardt, "spsolve", side_effect=slow_step) as solve):
+            x = levenberg_marquardt.solver(param, 0.1)
+        self.assertEqual(diagonal.call_count, 2)
+        solve.assert_not_called()
+        np.testing.assert_array_equal(x, problem.project(param.x0, param))
+
+    def test_lm_reserves_time_for_a_retry_based_on_the_previous_trial(self):
+        param = load("A_1.npz")
+        clock = Clock()
+
+        def slow_rejected_step(matrix, rhs):
+            clock.elapsed += 0.04
+            return np.zeros_like(rhs)
+
+        with (patch.object(levenberg_marquardt, "perf_counter", clock),
+              patch.object(levenberg_marquardt, "spsolve", side_effect=slow_rejected_step) as solve):
+            x = levenberg_marquardt.solver(param, 0.1)
+        solve.assert_called_once()
+        np.testing.assert_array_equal(x, problem.project(param.x0, param))
+
+    def test_lm_discards_a_trial_that_finishes_after_the_deadline(self):
+        param = load("A_1.npz")
+        clock = Clock()
+        spsolve = levenberg_marquardt.spsolve
+
+        def slow_step(matrix, rhs):
+            clock.elapsed = 0.095
+            return spsolve(matrix, rhs)
+
+        with (patch.object(levenberg_marquardt, "perf_counter", clock),
+              patch.object(levenberg_marquardt, "spsolve", side_effect=slow_step) as solve):
+            x = levenberg_marquardt.solver(param, 0.1)
+        solve.assert_called_once()
+        np.testing.assert_array_equal(x, problem.project(param.x0, param))
+
     def test_baselines_improve_feasible_output_within_budget(self):
         param = load("A_1.npz")
         original = param.x0.copy()
