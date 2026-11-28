@@ -6,8 +6,8 @@ from pathlib import Path
 
 import numpy as np
 
-from convergence_trace import Trace
-from visualize import COURSE
+from pipelines.convergence_trace import Trace
+from pipelines.paths import COURSE
 
 
 EDGE_GROUPS = ("Free-to-free", "Free-to-anchor", "Anchor-to-anchor")

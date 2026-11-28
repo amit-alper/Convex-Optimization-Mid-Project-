@@ -10,7 +10,8 @@ from uuid import uuid4
 import numpy as np
 from PIL import Image
 
-from visualize import COURSE, RESULTS, ROOT, make_figure
+from pipelines.paths import COURSE, RESULTS, ROOT
+from visualization.visualize import make_figure
 
 
 sys.path.insert(0, str(COURSE))
@@ -66,7 +67,7 @@ class VisualizationTests(unittest.TestCase):
             invalid = Path(directory) / "invalid.py"
             invalid.write_text("def solver(param, max_time):\n    return [0]\n", encoding="utf-8")
             completed = subprocess.run(
-                [sys.executable, "-B", "visualize.py", "A_1.npz", shifted, invalid,
+                [sys.executable, "-B", "-m", "visualization.visualize", "A_1.npz", shifted, invalid,
                  "--run", "long", "--edges", "--output", output_name],
                 cwd=ROOT, capture_output=True, text=True, timeout=120,
             )

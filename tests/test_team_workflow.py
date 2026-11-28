@@ -9,10 +9,11 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from convergence_trace import Trace
-from visualize import COURSE, ROOT
+from pipelines.convergence_trace import Trace
+from pipelines.paths import COURSE, ROOT, SOLVERS
 
 sys.path.insert(0, str(COURSE))
+sys.path.insert(0, str(SOLVERS))
 import example_initialized_pgd as example
 import problem
 
@@ -62,7 +63,7 @@ class TeamWorkflowTests(unittest.TestCase):
             )
             output = directory / "trace.npz"
             completed = subprocess.run(
-                [sys.executable, "-B", "record_trace.py", "A_1.npz", solver, "--output", output],
+                [sys.executable, "-B", "-m", "pipelines.record_trace", "A_1.npz", solver, "--output", output],
                 cwd=ROOT, capture_output=True, text=True, timeout=120,
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)

@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from visualize import COURSE, RESULTS
+from pipelines.paths import COURSE, RESULTS
 
 
 def main(default_solver=None, *, render=True):
@@ -38,8 +38,8 @@ def main(default_solver=None, *, render=True):
     os.environ.update(SINGLE_THREAD_ENV)
     import numpy as np
     import problem
-    from convergence_trace import Trace
-    from render_trace import render_trace
+    from pipelines.convergence_trace import Trace
+    from visualization.render_trace import render_trace
 
     sys.path.insert(0, str(solver_file.resolve().parent))
     spec = importlib.util.spec_from_file_location("diagnostic_solver", solver_file)

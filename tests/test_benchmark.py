@@ -8,8 +8,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from pipelines.paths import ROOT
 
-ROOT = Path(__file__).resolve().parents[1]
+
+CONTROL = str(Path("solvers/solver.py"))  # the CSV records the path as given
 
 
 class BenchmarkTests(unittest.TestCase):
@@ -21,7 +23,7 @@ class BenchmarkTests(unittest.TestCase):
 
     def invoke(self, *arguments):
         return subprocess.run(
-            [sys.executable, "-B", "benchmark.py", *arguments, "--output", self.output],
+            [sys.executable, "-B", "-m", "pipelines.benchmark", *arguments, "--output", self.output],
             cwd=ROOT, capture_output=True, text=True, timeout=120,
         )
 
@@ -37,13 +39,13 @@ class BenchmarkTests(unittest.TestCase):
     def test_compare_standalone_initializer_at_both_budgets(self):
         # Return a fixed test point. The course runner will restore the anchors.
         initializer = self.write_solver("initializer.py", "return param.x0 * 0")
-        completed = self.invoke("solver.py", initializer, "--only", "A_1.npz", "B_1.npz", "--run", "both")
+        completed = self.invoke(CONTROL, initializer, "--only", "A_1.npz", "B_1.npz", "--run", "both")
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn(str(initializer), completed.stdout)
         rows = self.read_rows()
         expected = {
             (solver, instance, run, budget)
-            for solver in ("solver.py", str(initializer))
+            for solver in (CONTROL, str(initializer))
             for instance in ("A_1.npz", "B_1.npz")
             for run, budget in (("short", 5), ("long", 20))
         }
@@ -60,14 +62,14 @@ class BenchmarkTests(unittest.TestCase):
             self.assertEqual(row["seed"], "0")
             if row["run"] == "short":
                 objectives[row["solver"], row["instance"]] = float(row["objective"])
-        starting_objective = objectives["solver.py", "A_1.npz"]
+        starting_objective = objectives[CONTROL, "A_1.npz"]
         self.assertAlmostEqual(starting_objective, 0.09200443128, places=10)
         self.assertNotEqual(starting_objective, objectives[str(initializer), "A_1.npz"])
 
     def test_failed_trials_are_recorded_and_the_experiment_continues(self):
         broken = self.write_solver("broken.py", 'raise RuntimeError("test solver failed")')
         invalid = self.write_solver("invalid.py", "return [0.0]")
-        completed = self.invoke(broken, invalid, "solver.py", "--only", "A_1.npz", "--run", "short")
+        completed = self.invoke(broken, invalid, CONTROL, "--only", "A_1.npz", "--run", "short")
         self.assertEqual(completed.returncode, 0, completed.stderr)
         rows = self.read_rows()
         self.assertEqual([row["status"] for row in rows], ["error", "invalid", "ok"])
@@ -78,7 +80,7 @@ class BenchmarkTests(unittest.TestCase):
         self.assertTrue(math.isfinite(float(rows[2]["objective"])))
 
     def test_unknown_instance_is_rejected_before_writing_csv(self):
-        completed = self.invoke("solver.py", "--only", "missing.npz")
+        completed = self.invoke(CONTROL, "--only", "missing.npz")
         self.assertEqual(completed.returncode, 2)
         self.assertIn("missing.npz", completed.stderr)
         self.assertFalse(self.output.exists())
@@ -86,7 +88,7 @@ class BenchmarkTests(unittest.TestCase):
     def test_existing_csv_is_preserved(self):
         self.output.parent.mkdir()
         self.output.write_text("original\n", encoding="utf-8")
-        completed = self.invoke("solver.py", "--only", "A_1.npz")
+        completed = self.invoke(CONTROL, "--only", "A_1.npz")
         self.assertEqual(completed.returncode, 2)
         self.assertIn("cannot create", completed.stderr)
         self.assertEqual(self.output.read_text(encoding="utf-8"), "original\n")

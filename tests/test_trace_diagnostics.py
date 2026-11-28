@@ -8,9 +8,9 @@ from pathlib import Path
 
 import numpy as np
 
-from convergence_trace import Trace
-from trace_diagnostics import collapsed_positions, edge_loss_stats, objective_ratio
-from visualize import COURSE, ROOT
+from pipelines.convergence_trace import Trace
+from pipelines.paths import COURSE, ROOT
+from pipelines.trace_diagnostics import collapsed_positions, edge_loss_stats, objective_ratio
 
 
 sys.path.insert(0, str(COURSE))
@@ -69,7 +69,7 @@ class DiagnosticsTests(unittest.TestCase):
             source = Path(directory) / "trace.npz"
             trace.save(source)
             completed = subprocess.run(
-                [sys.executable, "-B", "trace_diagnostics.py", source],
+                [sys.executable, "-B", "-m", "pipelines.trace_diagnostics", source],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )
         self.assertEqual(completed.returncode, 0, completed.stderr)

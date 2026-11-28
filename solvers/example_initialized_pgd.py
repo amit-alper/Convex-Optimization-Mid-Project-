@@ -2,15 +2,13 @@
 
 from time import perf_counter
 
-import problem
-
-from pgd import run_pgd
-from trace_diagnostics import collapsed_positions
+from initialization.baseline_initialization import collapsed_start
+from optimizers.pgd import run_pgd
 
 
 def initialize(param, max_time):
     """Use the collapsed reference as a simple demonstration start."""
-    return collapsed_positions(problem, param)
+    return collapsed_start(param)
 
 
 def solve(param, max_time, *, record=None):
