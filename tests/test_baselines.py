@@ -7,18 +7,19 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from convergence_trace import Trace
-from visualize import COURSE
+from pipelines.convergence_trace import Trace
+from pipelines.paths import COURSE, SOLVERS
 
 
 sys.path.insert(0, str(COURSE))
+sys.path.insert(0, str(SOLVERS))
 import problem
-import pgd
-import levenberg_marquardt
+import levenberg_marquardt as lm_solver
 import mds_pgd
-from core import mds
 from core.derivatives import Model
-from core.initialization.baseline_initialization import mds_start
+from initialization import mds
+from initialization.baseline_initialization import mds_start
+from optimizers import levenberg_marquardt, pgd
 
 
 def load(name):
@@ -143,7 +144,7 @@ class BaselineTests(unittest.TestCase):
         with (patch.object(levenberg_marquardt, "perf_counter", clock),
               patch.object(levenberg_marquardt.sp, "diags", side_effect=slow_diagonal) as diagonal,
               patch.object(levenberg_marquardt, "spsolve", side_effect=slow_step) as solve):
-            x = levenberg_marquardt.solver(param, 0.1)
+            x = lm_solver.solver(param, 0.1)
         self.assertEqual(diagonal.call_count, 2)
         solve.assert_not_called()
         np.testing.assert_array_equal(x, problem.project(param.x0, param))
@@ -158,7 +159,7 @@ class BaselineTests(unittest.TestCase):
 
         with (patch.object(levenberg_marquardt, "perf_counter", clock),
               patch.object(levenberg_marquardt, "spsolve", side_effect=slow_rejected_step) as solve):
-            x = levenberg_marquardt.solver(param, 0.1)
+            x = lm_solver.solver(param, 0.1)
         solve.assert_called_once()
         np.testing.assert_array_equal(x, problem.project(param.x0, param))
 
@@ -173,7 +174,7 @@ class BaselineTests(unittest.TestCase):
 
         with (patch.object(levenberg_marquardt, "perf_counter", clock),
               patch.object(levenberg_marquardt, "spsolve", side_effect=slow_step) as solve):
-            x = levenberg_marquardt.solver(param, 0.1)
+            x = lm_solver.solver(param, 0.1)
         solve.assert_called_once()
         np.testing.assert_array_equal(x, problem.project(param.x0, param))
 
@@ -181,7 +182,7 @@ class BaselineTests(unittest.TestCase):
         param = load("A_1.npz")
         original = param.x0.copy()
         start_value = problem.objective(param.x0, param)
-        for module in (mds_pgd, levenberg_marquardt):
+        for module in (mds_pgd, lm_solver):
             with self.subTest(solver=module.__name__):
                 started = perf_counter()
                 x = module.solver(param, 1.0)

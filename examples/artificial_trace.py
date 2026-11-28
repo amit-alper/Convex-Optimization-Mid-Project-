@@ -4,8 +4,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from convergence_trace import Trace
-from visualize import COURSE, RESULTS
+from pipelines.convergence_trace import Trace
+from pipelines.paths import COURSE, RESULTS
 
 
 def main():

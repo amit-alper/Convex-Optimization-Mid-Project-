@@ -87,10 +87,3 @@ def run_pgd(param, max_time, *, x0=None, record=None):
         record(x, iteration=iteration, elapsed_s=perf_counter() - started)
     return x
 
-
-def solver(param, max_time):
-    return run_pgd(param, max_time)
-
-
-# The shared trace command calls solve with an optional recording callback.
-solve = run_pgd

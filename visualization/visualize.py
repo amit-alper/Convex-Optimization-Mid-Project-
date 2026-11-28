@@ -6,10 +6,7 @@ import sys
 from pathlib import Path
 from textwrap import fill
 
-
-ROOT = Path(__file__).resolve().parent
-COURSE = ROOT / "course_package"
-RESULTS = ROOT / "results"
+from pipelines.paths import COURSE, RESULTS
 
 
 def collect_panels(problem, param, instance, solvers, budget):

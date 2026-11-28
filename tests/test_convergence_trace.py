@@ -17,9 +17,9 @@ import numpy as np
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from PIL import Image
 
-from convergence_trace import Trace
-from render_trace import render_trace
-from visualize import COURSE, RESULTS, ROOT
+from pipelines.convergence_trace import Trace
+from pipelines.paths import COURSE, RESULTS, ROOT
+from visualization.render_trace import render_trace
 
 
 class TraceTests(unittest.TestCase):
@@ -83,7 +83,7 @@ class TraceTests(unittest.TestCase):
 
                 with (
                     tempfile.TemporaryDirectory() as directory,
-                    patch("render_trace.MAX_FRAMES", 3),
+                    patch("visualization.render_trace.MAX_FRAMES", 3),
                     patch.object(FigureCanvasAgg, "draw", capture),
                     patch("builtins.print"),
                 ):
@@ -125,7 +125,7 @@ class TraceTests(unittest.TestCase):
             self.addCleanup(output.unlink, missing_ok=True)
             trace.save(source)
             completed = subprocess.run(
-                [sys.executable, "-B", "render_trace.py", source],
+                [sys.executable, "-B", "-m", "visualization.render_trace", source],
                 cwd=ROOT, capture_output=True, text=True, timeout=120,
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)

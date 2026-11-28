@@ -10,9 +10,9 @@ from textwrap import fill
 
 import numpy as np
 
-from convergence_trace import Trace
-from trace_diagnostics import collapsed_positions, objective_ratio
-from visualize import COURSE, RESULTS
+from pipelines.convergence_trace import Trace
+from pipelines.paths import COURSE, RESULTS
+from pipelines.trace_diagnostics import collapsed_positions, objective_ratio
 
 
 MAX_FRAMES = 32

@@ -3,7 +3,7 @@
   1. shortest_path_distances: fill in missing pairs with graph shortest paths
   2. classical_mds:           relative map from the top q eigenpairs [Shang03, Eq. 1]
   3. align_to_anchors:        scale + rotation/reflection + shift fit to the anchors
-mds_map runs all three. Initializations (core/initialization/) build on these pieces.
+mds_map runs all three. baseline_initialization.mds_start builds on these pieces.
 
 No local minima (eigendecomposition), but sensitive to range errors [Patwari05, p. 65];
 expected error is about half the radio range at ~12 neighbors [Biswas04, Sec. 1].

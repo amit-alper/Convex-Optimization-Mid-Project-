@@ -1,17 +1,17 @@
 """Baseline 1 (handout p. 7): projected gradient descent started from classical MDS.
 
-The initializer is MDS-MAP (core/mds.py) and the optimizer is the shared pgd.run_pgd.
+The initializer is MDS-MAP (initialization/mds.py) and the optimizer is the shared optimizers.pgd.run_pgd.
 MDS checks the remaining time before its expensive stages and falls back to the course start.
 The elapsed initialization time counts toward the internal deadline for PGD.
 """
 
 from time import perf_counter
 
-from pgd import run_pgd
-from core.initialization.baseline_initialization import mds_start
+from initialization.baseline_initialization import mds_start
+from optimizers.pgd import run_pgd
 
 
-TIME_FRACTION = 0.9      # course README: return by 0.9 max_time (pgd.py alone would use 0.95)
+TIME_FRACTION = 0.9      # course README: return by 0.9 max_time (run_pgd alone would use 0.95)
 MIN_PGD_TIME = 0.025     # leave room for at least one objective and gradient on the public graphs
 
 

@@ -1,4 +1,4 @@
-"""Baseline 2 (handout p. 7): Levenberg-Marquardt (damped Gauss-Newton) started from x0.
+"""Levenberg-Marquardt (damped Gauss-Newton), the optimizer of baseline 2 (handout p. 7).
 
 Each iteration solves (J^T W J + lambda D) step = -J^T W r over the free sensor coordinates:
   - J: residual Jacobian (core.derivatives.Model.jacobian)
@@ -32,7 +32,7 @@ LAMBDA_MAX = 1e12        # stop: no decrease even with a tiny gradient step
 def run_lm(param, max_time, *, x0=None, record=None):
     """Run LM from the supplied array or the instance's default start; return the last accepted point.
 
-    record(x, iteration=, elapsed_s=) is called on a geometric schedule (convergence_trace.Trace).
+    record(x, iteration=, elapsed_s=) is called on a geometric schedule (pipelines/convergence_trace.py).
     """
     started = perf_counter()
     deadline = started + TIME_FRACTION * max_time
@@ -96,15 +96,3 @@ def run_lm(param, max_time, *, x0=None, record=None):
         record(x, iteration=iteration, elapsed_s=perf_counter() - started)
     return x
 
-
-def initialize(param, max_time):
-    """The course starting point x0 (random sensors in the box, anchors in place)."""
-    return project(param.x0, param)
-
-
-def solve(param, max_time, *, record=None):
-    return run_lm(param, max_time, record=record)
-
-
-def solver(param, max_time):
-    return solve(param, max_time)

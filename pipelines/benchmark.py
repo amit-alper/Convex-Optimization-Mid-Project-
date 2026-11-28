@@ -8,9 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from pipelines.paths import COURSE, ROOT
 
-ROOT = Path(__file__).resolve().parent
-COURSE = ROOT / "course_package"
 SEED = 0
 FIELDS = (
     "solver", "instance", "run", "budget_s", "seed", "status", "objective",

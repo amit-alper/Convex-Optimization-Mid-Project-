@@ -6,13 +6,15 @@ from unittest.mock import patch
 
 import numpy as np
 
-from convergence_trace import Trace
-from visualize import COURSE
+from pipelines.convergence_trace import Trace
+from pipelines.paths import COURSE, SOLVERS
 
 
 sys.path.insert(0, str(COURSE))
+sys.path.insert(0, str(SOLVERS))
+import pgd as pgd_solver
 import problem
-import pgd
+from optimizers import pgd
 
 
 class PGDTests(unittest.TestCase):
@@ -58,7 +60,7 @@ class PGDTests(unittest.TestCase):
             with self.subTest(kind=kind):
                 param = problem.load(COURSE / "public" / f"{kind}_1.npz")
                 original = param.x0.copy()
-                x = pgd.solver(param, 0.12)
+                x = pgd_solver.solver(param, 0.12)
                 self.assertEqual(param.violation(x), 0)
                 self.assertLess(problem.objective(x, param), problem.objective(original, param))
                 np.testing.assert_array_equal(param.x0, original)
@@ -82,7 +84,7 @@ class PGDTests(unittest.TestCase):
             patch.object(pgd, "perf_counter", side_effect=lambda: elapsed),
             patch.object(pgd, "objective", score),
         ):
-            x = pgd.solver(param, 1)
+            x = pgd_solver.solver(param, 1)
         self.assertEqual(evaluations, 4)
         np.testing.assert_array_equal(x, param.x0)
 
@@ -95,7 +97,7 @@ class PGDTests(unittest.TestCase):
         np.testing.assert_array_equal(x, problem.project(supplied, param))
         np.testing.assert_array_equal(param.x0, original)
         np.testing.assert_array_equal(supplied, before)
-        np.testing.assert_array_equal(pgd.solver(param, 0), original)
+        np.testing.assert_array_equal(pgd_solver.solver(param, 0), original)
 
     def test_optional_trace_includes_start_and_final_accepted_positions(self):
         filename = "A_1.npz"
